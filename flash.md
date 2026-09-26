@@ -220,4 +220,4 @@ download sources or elevated rights. Then:
    Raily Pin app, never in the public post.
 
 The by-hand path, without an agent, is in
-[`docs/manual-flash.md`](https://github.com/railyai/raily-pin/blob/main/docs/manual-flash.md).
+[`docs/manual-flash.md`](https://github.com/railyai/raily-pin/blob/v0.3.0/docs/manual-flash.md).

@@ -15,7 +15,7 @@ is already in its shell.
 | `update-xiao_nrf52840_ble_bootloader-0.9.2-OTAFIX2.3-BP1.4_nosd.uf2` | Bootloader update, **plain** board |
 
 Check each file's SHA-256 against `releases.json` in
-[github.com/railyai/raily-pin](https://github.com/railyai/raily-pin/blob/main/releases.json):
+[github.com/railyai/raily-pin](https://github.com/railyai/raily-pin/blob/v0.3.0/releases.json):
 `shasum -a 256 <file>` (Mac, Linux) or `certutil -hashfile <file> SHA256`
 (Windows). Do not use a file whose checksum differs.
 
