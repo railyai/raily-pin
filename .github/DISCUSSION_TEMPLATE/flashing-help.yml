@@ -1,0 +1,53 @@
+title: "Flashing: "
+labels: ["flashing"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If an AI agent flashed your pin, paste the draft it wrote for you.
+        **Do not post your pin's ID (`rp1-…`)**: if we need it, we will ask
+        you to send it through Help in the Raily Pin app.
+  - type: dropdown
+    id: board
+    attributes:
+      label: Board
+      options:
+        - XIAO nRF52840 Sense
+        - XIAO nRF52840 (plain)
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: bootloader
+    attributes:
+      label: Bootloader
+      description: First line of INFO_UF2.TXT on the XIAO drive, e.g. "UF2 Bootloader 0.6.1"
+  - type: input
+    id: firmware
+    attributes:
+      label: Firmware version you tried to flash
+  - type: input
+    id: os
+    attributes:
+      label: Computer and operating system
+      placeholder: macOS 15 on Apple silicon / Windows 11 / Ubuntu 24.04
+    validations:
+      required: true
+  - type: dropdown
+    id: method
+    attributes:
+      label: How you flashed
+      options:
+        - Claude Code
+        - Codex
+        - Cursor
+        - Another AI agent
+        - By hand (docs/manual-flash.md)
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: The step that failed and the exact error text.
+      render: text
+    validations:
+      required: true

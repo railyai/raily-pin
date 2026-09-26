@@ -1,0 +1,54 @@
+name: Firmware bug
+description: The pin firmware does something wrong after a successful flash.
+labels: ["firmware", "bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For flashing trouble or questions, please use
+        [Discussions](https://github.com/railyai/raily-pin/discussions) instead.
+        For security problems use the Security tab, not an issue.
+        **Do not post your pin's ID (`rp1-…`).**
+  - type: input
+    id: firmware
+    attributes:
+      label: Firmware version
+      description: Shown in the Raily Pin app (Settings), or the "fw" field of serial `i`.
+    validations:
+      required: true
+  - type: dropdown
+    id: board
+    attributes:
+      label: Board
+      options:
+        - XIAO nRF52840 Sense
+        - XIAO nRF52840 (plain)
+    validations:
+      required: true
+  - type: input
+    id: bootloader
+    attributes:
+      label: Bootloader
+      description: First line of INFO_UF2.TXT, e.g. "UF2 Bootloader 0.9.2-OTAFIX2.3-BP1.4"
+  - type: input
+    id: phone
+    attributes:
+      label: Phone and app version
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected and what happened instead
+    validations:
+      required: true
+  - type: textarea
+    id: serial
+    attributes:
+      label: Serial output (optional)
+      description: 115200 baud. Replace the device_id value with rp1-<hidden>.
+      render: text

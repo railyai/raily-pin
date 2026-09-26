@@ -1,0 +1,9 @@
+# Installed into a private virtual environment (never system-wide, never with sudo):
+#   python3 -m venv ~/raily-pin/.venv
+#   ~/raily-pin/.venv/bin/pip install --require-hashes -r tools/requirements.txt
+# --require-hashes makes pip refuse any file whose SHA-256 differs from the one below.
+adafruit-nrfutil==0.5.3.post16 --hash=sha256:b72103dc8e50f92951f512fc2b6f2c621dac1614531ddf8c0be3b13d020e24ad
+click==8.1.8 --hash=sha256:63c132bbbed01578a06712a2d1f497bb62d9c1c0d329b7903a866228027263b2
+ecdsa==0.19.2 --hash=sha256:840f5dc5e375c68f36c1a7a5b9caad28f95daa65185c9253c0c08dd952bb7399
+pyserial==3.5 --hash=sha256:c4451db6ba391ca6ca299fb3ec7bae67a5c55dde170964c7a14ceefec02f2cf0
+six==1.17.0 --hash=sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274

@@ -1,0 +1,10 @@
+Raily Pin
+Copyright 2026 Raily AI
+
+This product includes software developed by Raily AI (https://railyai.com).
+
+The firmware is built with the Seeed nRF52 Arduino core and the Adafruit
+Bluefruit nRF52 libraries (see their own licences). Self-builders install
+the OTAFIX bootloader (https://github.com/oltaco/Adafruit_nRF52_Bootloader_OTAFIX,
+MIT licence, see docs/third-party/OTAFIX-LICENSE); Raily redistributes its
+unmodified release files on download.railyai.com.

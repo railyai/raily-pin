@@ -1,0 +1,12 @@
+title: "My pin: "
+labels: ["build"]
+body:
+  - type: markdown
+    attributes:
+      value: Show your build — shell remixes, photos, tips. Please keep pin IDs (`rp1-…`) out of photos and text.
+  - type: textarea
+    id: build
+    attributes:
+      label: Your build
+    validations:
+      required: true

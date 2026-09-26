@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "firmware": [
+    {
+      "version": "0.2.3-qa",
+      "zip": {
+        "file": "raily-pin-0.2.3-qa.zip",
+        "sha256": "787a0fa1eea389bd5541d4f7a0a7ea26f22534c64ee69b283a6af932742cc7ad"
+      },
+      "uf2": {
+        "file": "raily-pin-0.2.3-qa.uf2",
+        "sha256": "7927b4ad23a01224c18977d245c170e0df101344292c8e05e1daf5efdd372cc3"
+      },
+      "source_commit": "b7035af6c"
+    }
+  ],
+  "latest": "0.2.3-qa",
+  "bootloader": {
+    "version": "0.9.2-OTAFIX2.3-BP1.4",
+    "accept_prefix": "0.9.2-OTAFIX2.3",
+    "source": "https://github.com/oltaco/Adafruit_nRF52_Bootloader_OTAFIX (MIT)",
+    "variants": [
+      {
+        "variant": "sense",
+        "file": "update-xiao_nrf52840_ble_sense_bootloader-0.9.2-OTAFIX2.3-BP1.4_nosd.uf2",
+        "sha256": "5aa99201f3adcc128e1ebdc7ea4b4ba8e370ededda13ad94942059da5a1617c4"
+      },
+      {
+        "variant": "plain",
+        "file": "update-xiao_nrf52840_ble_bootloader-0.9.2-OTAFIX2.3-BP1.4_nosd.uf2",
+        "sha256": "97677d7815d7fe1f2600ff5c39f04c9d72bfc03e7f33e587e21b1bf7b30d04fa"
+      }
+    ]
+  }
+}

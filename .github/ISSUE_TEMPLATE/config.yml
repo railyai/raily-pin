@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Flashing help and questions
+    url: https://github.com/railyai/raily-pin/discussions/new?category=flashing-help
+    about: Trouble flashing or setting up a pin — ask in Discussions.
+  - name: Account or a specific pin
+    url: https://atlas.railyai.com
+    about: Use Help in the Raily Pin app; it can safely include your pin's ID.
