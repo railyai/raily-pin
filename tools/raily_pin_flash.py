@@ -40,6 +40,7 @@ import string
 import struct
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -146,12 +147,17 @@ def download(url: str, dest: Path) -> None:
         raise Stop(f"refusing to download from {url} (only {DOWNLOAD_PREFIX} is allowed)")
     req = urllib.request.Request(url, headers={"User-Agent": "raily-pin-flash/1", "Cache-Control": "no-cache"})
     tmp = dest.with_suffix(dest.suffix + ".part")
-    with urllib.request.urlopen(req, timeout=60) as resp:  # noqa: S310 - https + host checked above
-        final = urllib.parse.urlsplit(resp.geturl())
-        if final.scheme != "https" or final.netloc != "download.railyai.com":
-            raise Stop(f"download of {url} was redirected to {resp.geturl()}; refusing")
-        with tmp.open("wb") as out:
-            shutil.copyfileobj(resp, out)
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:  # noqa: S310 - https + host checked above
+            final = urllib.parse.urlsplit(resp.geturl())
+            if final.scheme != "https" or final.netloc != "download.railyai.com":
+                raise Stop(f"download of {url} was redirected to {resp.geturl()}; refusing")
+            with tmp.open("wb") as out:
+                shutil.copyfileobj(resp, out)
+    except urllib.error.HTTPError as exc:
+        raise Stop(f"download of {url} failed with HTTP {exc.code}; the release file is not available. Nothing was written to the board.") from exc
+    except urllib.error.URLError as exc:
+        raise Stop(f"could not reach download.railyai.com ({exc.reason}); check the internet connection and run fetch again.") from exc
     tmp.replace(dest)
 
 
