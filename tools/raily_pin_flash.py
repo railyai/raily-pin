@@ -147,6 +147,19 @@ def save_state(workdir: Path, **values) -> None:
     path.write_text(json.dumps(state, sort_keys=True), encoding="utf-8")
 
 
+STATE_MAX_AGE = 3600  # seconds a bootloader check stays valid for flash-serial
+
+
+def board_identity() -> dict:
+    """USB serial number of the single connected XIAO (None if unknown) and the check time."""
+    try:
+        matches, _ = list_xiao_ports()
+    except Stop:
+        matches = []
+    serial_number = matches[0].get("serial_number") if len(matches) == 1 else None
+    return {"board_serial": serial_number, "checked_at": time.time()}
+
+
 def load_state(workdir: Path) -> dict:
     try:
         return json.loads(state_path(workdir).read_text(encoding="utf-8"))
@@ -271,6 +284,7 @@ def list_xiao_ports() -> tuple[list[dict], list[dict]]:
         if p.vid is None:
             continue
         entry = {
+            "serial_number": p.serial_number,
             "port": p.device,
             "vid": f"0x{p.vid:04x}",
             "pid": f"0x{p.pid:04x}",
@@ -387,7 +401,7 @@ def cmd_bootloader(args) -> dict:
     variant_name = board_variant(info, mount)
     variant = bootloader_entry(releases, variant_name)
     status = "otafix" if is_otafix(releases, info.get("bootloader")) else "needs_update"
-    save_state(args.workdir, bootloader=info.get("bootloader"), variant=variant_name)
+    save_state(args.workdir, bootloader=info.get("bootloader"), variant=variant_name, **board_identity())
     if status == "otafix":
         say(f"Bootloader {info['bootloader']} is already the required {required}.")
     else:
@@ -439,15 +453,9 @@ def copy_to_drive(name: str, data: bytes, mount: Path) -> None:
             view = memoryview(data)
             while written < len(data):
                 written += os.write(fd, view[written : written + (1 << 16)])
-            try:
-                os.fsync(fd)
-            except OSError:
-                pass
+            os.fsync(fd)
         finally:
-            try:
-                os.close(fd)
-            except OSError:
-                pass
+            os.close(fd)
     except OSError as exc:
         # The board reboots as soon as the last block lands, so the drive can
         # vanish before the close. That is only normal once every byte is out.
@@ -455,6 +463,8 @@ def copy_to_drive(name: str, data: bytes, mount: Path) -> None:
             raise Stop(f"copying {name} to {mount} failed after {written} of {len(data)} bytes: {exc}") from exc
         if written < len(data):
             raise Stop(f"the drive went away after {written} of {len(data)} bytes; double-tap RESET and run this step again") from exc
+        if exc.errno not in GONE_ERRNOS:
+            raise Stop(f"finishing the copy of {name} to {mount} failed: {exc}") from exc
         say(f"  the drive went away at the end of the copy ({exc.__class__.__name__}); that is normal when the board reboots")
 
 
@@ -529,7 +539,7 @@ def cmd_install_bootloader(args) -> dict:
             f"After the update the drive reports bootloader {info2.get('bootloader')!r}, not {required}. "
             "Do not unplug; ask for help (report step)."
         )
-    save_state(args.workdir, bootloader=info2.get("bootloader"))
+    save_state(args.workdir, bootloader=info2.get("bootloader"), **board_identity())
     say(f"Bootloader is now {info2.get('bootloader')}.")
     return {"ok": True, "changed": True, "bootloader": info2.get("bootloader"), "drive": str(mount2)}
 
@@ -561,6 +571,13 @@ def cmd_flash_serial(args) -> dict:
         )
     src = verified_local(rel["zip"]["file"], rel["zip"]["sha256"], args.workdir)
     board = cmd_detect(args)
+    if not args.allow_stock_bootloader:
+        state = load_state(args.workdir)
+        if time.time() - float(state.get("checked_at") or 0) > STATE_MAX_AGE:
+            raise Stop("The bootloader check is more than an hour old. Run the bootloader step again first.")
+        checked, now = state.get("board_serial"), board.get("serial_number")
+        if checked and now and checked != now:
+            raise Stop("This is not the board whose bootloader was checked. Run the bootloader step for this board first.")
     nrfutil = shutil.which("adafruit-nrfutil", path=str(Path(sys.executable).parent)) or shutil.which("adafruit-nrfutil")
     if not nrfutil:
         raise Stop("adafruit-nrfutil is missing: install tools/requirements.txt into the venv first")
