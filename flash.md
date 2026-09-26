@@ -74,9 +74,13 @@ py -3 -m venv .venv
 ```
 
 `v0.3.0` is the release this page belongs to: always use the tag named
-here, never whatever `main` holds. If `~/raily-pin` already exists, run
+here, never whatever `main` holds. If `~/raily-pin` already exists, reuse
+it only when `git -C ~/raily-pin remote get-url origin` prints exactly
+`https://github.com/railyai/raily-pin` (or the same with `.git`) and
+`git -C ~/raily-pin status --porcelain` prints nothing; then run
 `git -C ~/raily-pin fetch --depth 1 origin tag v0.3.0` and
-`git -C ~/raily-pin checkout v0.3.0` instead of cloning. Below, `PY` means `.venv/bin/python` (macOS/Linux) or
+`git -C ~/raily-pin checkout v0.3.0`. Otherwise do not touch that folder:
+clone into a new one, for example `~/raily-pin-v0.3.0`, and use that. Below, `PY` means `.venv/bin/python` (macOS/Linux) or
 `.venv\Scripts\python` (Windows), run from the `raily-pin` folder.
 
 Offer the person a look at `tools/raily_pin_flash.py` before you run it (it
