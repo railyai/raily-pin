@@ -30,6 +30,7 @@ adafruit-nrfutil for `flash-serial` (tools/requirements.txt, hash-pinned).
 from __future__ import annotations
 
 import argparse
+import errno
 import hashlib
 import json
 import os
@@ -65,6 +66,8 @@ NRF52840_FAMILY = 0xADA52840  # application images
 BOOTLOADER_FAMILY = 0xD663823C  # "update-*.uf2" bootloader self-update images
 
 DEVICE_ID_RE = re.compile(r"rp1-[0-9a-f]{16}")
+DEVICE_ID_ANYCASE_RE = re.compile(r"rp1-[0-9a-f]{16}", re.IGNORECASE)
+MAX_DOWNLOAD_BYTES = 8 * 1024 * 1024  # firmware and bootloader files are well under 1 MB
 VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$")
 FILENAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
@@ -125,7 +128,30 @@ def bootloader_entry(releases: dict, variant: str) -> dict:
 
 
 def is_otafix(releases: dict, version: str | None) -> bool:
-    return bool(version) and version.startswith(releases["bootloader"]["accept_prefix"])
+    prefix = releases["bootloader"]["accept_prefix"]
+    return bool(version) and (version == prefix or version.startswith(prefix + "-"))
+
+
+def state_path(workdir: Path) -> Path:
+    return workdir / "state.json"
+
+
+def save_state(workdir: Path, **values) -> None:
+    path = state_path(workdir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        state = {}
+    state.update(values)
+    path.write_text(json.dumps(state, sort_keys=True), encoding="utf-8")
+
+
+def load_state(workdir: Path) -> dict:
+    try:
+        return json.loads(state_path(workdir).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
 
 
 def sha256_file(path: Path) -> str:
@@ -141,23 +167,47 @@ def check_file_name(name: str) -> None:
         raise Stop(f"refusing odd file name {name!r}")
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Never follow a redirect: the files must be served directly from /pins/."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: D102
+        raise Stop(f"download of {req.full_url} was redirected to {newurl}; refusing")
+
+
 def download(url: str, dest: Path) -> None:
     parsed = urllib.parse.urlsplit(url)
     if parsed.scheme != "https" or parsed.netloc != "download.railyai.com" or not parsed.path.startswith("/pins/"):
         raise Stop(f"refusing to download from {url} (only {DOWNLOAD_PREFIX} is allowed)")
     req = urllib.request.Request(url, headers={"User-Agent": "raily-pin-flash/1", "Cache-Control": "no-cache"})
     tmp = dest.with_suffix(dest.suffix + ".part")
+    opener = urllib.request.build_opener(_NoRedirect)
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:  # noqa: S310 - https + host checked above
-            final = urllib.parse.urlsplit(resp.geturl())
-            if final.scheme != "https" or final.netloc != "download.railyai.com":
-                raise Stop(f"download of {url} was redirected to {resp.geturl()}; refusing")
+        with opener.open(req, timeout=60) as resp:  # noqa: S310 - https + host checked above
+            received = 0
             with tmp.open("wb") as out:
-                shutil.copyfileobj(resp, out)
+                while True:
+                    chunk = resp.read(1 << 16)
+                    if not chunk:
+                        break
+                    received += len(chunk)
+                    if received > MAX_DOWNLOAD_BYTES:
+                        raise Stop(f"download of {url} is larger than {MAX_DOWNLOAD_BYTES} bytes; refusing")
+                    out.write(chunk)
     except urllib.error.HTTPError as exc:
+        tmp.unlink(missing_ok=True)
         raise Stop(f"download of {url} failed with HTTP {exc.code}; the release file is not available. Nothing was written to the board.") from exc
     except urllib.error.URLError as exc:
-        raise Stop(f"could not reach download.railyai.com ({exc.reason}); check the internet connection and run fetch again.") from exc
+        tmp.unlink(missing_ok=True)
+        hint = "check the internet connection and run fetch again"
+        if "CERTIFICATE_VERIFY_FAILED" in str(exc.reason):
+            hint = (
+                "Python cannot check HTTPS certificates. On a Mac with Python from python.org, run "
+                "'Install Certificates.command' from the Python folder in Applications, then run fetch again"
+            )
+        raise Stop(f"could not download from download.railyai.com ({exc.reason}); {hint}.") from exc
+    except Stop:
+        tmp.unlink(missing_ok=True)
+        raise
     tmp.replace(dest)
 
 
@@ -285,7 +335,8 @@ def parse_info_uf2(text: str) -> dict:
     return info
 
 
-def find_xiao_drive() -> tuple[Path, dict] | None:
+def find_xiao_drives() -> list[tuple[Path, dict]]:
+    found = []
     for mount in candidate_mounts():
         info_path = mount / "INFO_UF2.TXT"
         try:
@@ -297,21 +348,32 @@ def find_xiao_drive() -> tuple[Path, dict] | None:
         info = parse_info_uf2(text)
         if "nRF52840" in (info.get("model") or "") or "nRF52840" in (info.get("board_id") or ""):
             if "XIAO" in (info.get("model") or "") or "XIAO" in (info.get("board_id") or ""):
-                return mount, info
-    return None
+                found.append((mount, info))
+    return found
 
 
-def wait_for_drive(timeout: float) -> tuple[Path, dict]:
+def wait_for_drive(timeout: float, accept=None) -> tuple[Path, dict]:
+    """Wait for exactly one XIAO drive; with `accept`, until its INFO_UF2.TXT satisfies it."""
     deadline = time.monotonic() + timeout
+    last = None
     while True:
-        found = find_xiao_drive()
-        if found:
-            return found
+        drives = find_xiao_drives()
+        if len(drives) > 1:
+            raise Stop("More than one XIAO drive is mounted. Unplug all boards but the one you are flashing, then run this step again.")
+        if drives:
+            last = drives[0]
+            if accept is None or accept(last[1]):
+                return last
         if time.monotonic() > deadline:
-            raise Stop(
+            if last is not None:
+                return last
+            hint = (
                 "The XIAO drive did not appear. Double-tap the RESET button quickly (two taps within half a second); "
-                "the green LED should pulse and a drive named XIAO-SENSE (or similar) should appear. Then run this step again."
+                "the green LED should pulse and a drive named XIAO-SENSE (or XIAO-BOOT) should appear. Then run this step again."
             )
+            if platform.system() == "Linux":
+                hint += " On Linux without automatic mounting, open the drive once in the file manager so it gets mounted."
+            raise Stop(hint)
         time.sleep(1)
 
 
@@ -325,6 +387,7 @@ def cmd_bootloader(args) -> dict:
     variant_name = board_variant(info, mount)
     variant = bootloader_entry(releases, variant_name)
     status = "otafix" if is_otafix(releases, info.get("bootloader")) else "needs_update"
+    save_state(args.workdir, bootloader=info.get("bootloader"), variant=variant_name)
     if status == "otafix":
         say(f"Bootloader {info['bootloader']} is already the required {required}.")
     else:
@@ -340,9 +403,10 @@ def cmd_bootloader(args) -> dict:
     }
 
 
-def check_uf2(path: Path, family_id: int = NRF52840_FAMILY) -> int:
+def check_uf2(path: Path, family_id: int = NRF52840_FAMILY, data: bytes | None = None) -> int:
     """Sanity-check a UF2 file: magic numbers and the expected family on every block."""
-    data = path.read_bytes()
+    if data is None:
+        data = path.read_bytes()
     if not data or len(data) % 512:
         raise Stop(f"{path.name} is not a UF2 file (size {len(data)})")
     blocks = len(data) // 512
@@ -357,21 +421,41 @@ def check_uf2(path: Path, family_id: int = NRF52840_FAMILY) -> int:
     return blocks
 
 
-def copy_to_drive(src: Path, mount: Path) -> None:
-    dest = mount / src.name
-    say(f"Copying {src.name} to {mount} ...")
+GONE_ERRNOS = {errno.ENOENT, errno.EIO, errno.ENXIO, errno.ENODEV, getattr(errno, "ESTALE", -1)}
+
+
+def copy_to_drive(name: str, data: bytes, mount: Path) -> None:
+    """Write already-verified bytes to the drive (never re-read from disk)."""
+    check_file_name(name)
+    dest = mount / name
+    if dest.is_symlink():
+        raise Stop(f"{dest} is a symbolic link; refusing to write through it")
+    say(f"Copying {name} to {mount} ...")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    written = 0
     try:
-        with src.open("rb") as fin, dest.open("wb") as fout:
-            shutil.copyfileobj(fin, fout, length=1 << 16)
-            fout.flush()
+        fd = os.open(dest, flags, 0o644)
+        try:
+            view = memoryview(data)
+            while written < len(data):
+                written += os.write(fd, view[written : written + (1 << 16)])
             try:
-                os.fsync(fout.fileno())
+                os.fsync(fd)
+            except OSError:
+                pass
+        finally:
+            try:
+                os.close(fd)
             except OSError:
                 pass
     except OSError as exc:
-        # The board reboots as soon as the last block lands, so the drive
-        # disappears mid-close. That is the normal, successful outcome.
-        say(f"  the drive went away during the copy ({exc.__class__.__name__}); that is normal when the board reboots")
+        # The board reboots as soon as the last block lands, so the drive can
+        # vanish before the close. That is only normal once every byte is out.
+        if written < len(data) and exc.errno not in GONE_ERRNOS:
+            raise Stop(f"copying {name} to {mount} failed after {written} of {len(data)} bytes: {exc}") from exc
+        if written < len(data):
+            raise Stop(f"the drive went away after {written} of {len(data)} bytes; double-tap RESET and run this step again") from exc
+        say(f"  the drive went away at the end of the copy ({exc.__class__.__name__}); that is normal when the board reboots")
 
 
 def expected_files(args) -> tuple[dict, dict]:
@@ -396,6 +480,7 @@ def cmd_fetch(args) -> dict:
 
 
 def verified_local(name: str, expected: str, workdir: Path) -> Path:
+    check_file_name(name)
     path = workdir / "files" / name
     if not path.is_file():
         raise Stop(f"{name} has not been downloaded yet: run the fetch step first")
@@ -403,6 +488,17 @@ def verified_local(name: str, expected: str, workdir: Path) -> Path:
         path.unlink(missing_ok=True)
         raise Stop(f"{name} changed on disk since it was verified; deleted it. Run fetch again.")
     return path
+
+
+def verified_bytes(name: str, expected: str, workdir: Path, family_id: int) -> bytes:
+    """Read once, then hash and validate exactly the bytes that will be written."""
+    path = verified_local(name, expected, workdir)
+    data = path.read_bytes()
+    if hashlib.sha256(data).hexdigest() != expected:
+        path.unlink(missing_ok=True)
+        raise Stop(f"{name} changed on disk since it was verified; deleted it. Run fetch again.")
+    check_uf2(path, family_id, data)
+    return data
 
 
 def cmd_install_bootloader(args) -> dict:
@@ -413,34 +509,34 @@ def cmd_install_bootloader(args) -> dict:
         say(f"Bootloader {info.get('bootloader')} is already OTAFIX; nothing to do.")
         return {"ok": True, "changed": False, "bootloader": info.get("bootloader")}
     variant = bootloader_entry(releases, board_variant(info, mount))
-    src = verified_local(variant["file"], variant["sha256"], args.workdir)
-    check_uf2(src, BOOTLOADER_FAMILY)
+    data = verified_bytes(variant["file"], variant["sha256"], args.workdir, BOOTLOADER_FAMILY)
     if not args.yes:
         raise Stop("install-bootloader writes the bootloader. Re-run with --yes after the person has agreed.")
     say(
         "Installing the OTAFIX bootloader. Do NOT unplug the board until the drive comes back "
         "(about 10-30 seconds): an interrupted bootloader write is the one way to make recovery hard."
     )
-    copy_to_drive(src, mount)
+    copy_to_drive(variant["file"], data, mount)
     say(
         "Waiting for the drive to come back with the new bootloader. If it has not come back after "
         "30 seconds, double-tap RESET again (the new bootloader may start in Bluetooth update mode)."
     )
-    time.sleep(3)
-    mount2, info2 = wait_for_drive(max(args.timeout, 120))
+    # The old mount can linger for a while, so keep polling until the drive
+    # reports OTAFIX (or the time is up) instead of trusting the first read.
+    mount2, info2 = wait_for_drive(args.timeout, accept=lambda i: is_otafix(releases, i.get("bootloader")))
     if not is_otafix(releases, info2.get("bootloader")):
         raise Stop(
             f"After the update the drive reports bootloader {info2.get('bootloader')!r}, not {required}. "
             "Do not unplug; ask for help (report step)."
         )
+    save_state(args.workdir, bootloader=info2.get("bootloader"))
     say(f"Bootloader is now {info2.get('bootloader')}.")
     return {"ok": True, "changed": True, "bootloader": info2.get("bootloader"), "drive": str(mount2)}
 
 
 def cmd_flash(args) -> dict:
     releases, rel = expected_files(args)
-    src = verified_local(rel["uf2"]["file"], rel["uf2"]["sha256"], args.workdir)
-    check_uf2(src, NRF52840_FAMILY)
+    data = verified_bytes(rel["uf2"]["file"], rel["uf2"]["sha256"], args.workdir, NRF52840_FAMILY)
     mount, info = wait_for_drive(args.timeout)
     required = releases["bootloader"]["version"]
     if not is_otafix(releases, info.get("bootloader")) and not args.allow_stock_bootloader:
@@ -450,13 +546,19 @@ def cmd_flash(args) -> dict:
         )
     if not args.yes:
         raise Stop("flash writes the firmware. Re-run with --yes after the person has agreed.")
-    copy_to_drive(src, mount)
+    copy_to_drive(rel["uf2"]["file"], data, mount)
     say("The board is restarting into the Raily Pin firmware.")
     return {"ok": True, "version": rel["version"], "method": "uf2"}
 
 
 def cmd_flash_serial(args) -> dict:
-    _releases, rel = expected_files(args)
+    releases, rel = expected_files(args)
+    known = load_state(args.workdir).get("bootloader")
+    if not is_otafix(releases, known) and not args.allow_stock_bootloader:
+        raise Stop(
+            f"The last bootloader check saw {known!r}, not OTAFIX. Run the bootloader step (and install-bootloader "
+            "if needed) first, otherwise the pin can never update over the air."
+        )
     src = verified_local(rel["zip"]["file"], rel["zip"]["sha256"], args.workdir)
     board = cmd_detect(args)
     nrfutil = shutil.which("adafruit-nrfutil", path=str(Path(sys.executable).parent)) or shutil.which("adafruit-nrfutil")
@@ -471,7 +573,8 @@ def cmd_flash_serial(args) -> dict:
     import subprocess
 
     # click (inside adafruit-nrfutil) aborts under an ASCII locale.
-    env = dict(os.environ, PYTHONUTF8="1", LC_ALL=os.environ.get("LC_ALL") or "C.UTF-8", LANG=os.environ.get("LANG") or "C.UTF-8")
+    utf8 = "C.UTF-8" if platform.system() != "Darwin" else "en_US.UTF-8"
+    env = dict(os.environ, PYTHONUTF8="1", LC_ALL=os.environ.get("LC_ALL") or utf8, LANG=os.environ.get("LANG") or utf8)
     proc = subprocess.run(cmd, check=False, env=env)
     if proc.returncode != 0:
         raise Stop(f"adafruit-nrfutil exited with {proc.returncode}")
@@ -530,10 +633,12 @@ def cmd_verify(args) -> dict:
 
 
 def scrub(text: str) -> str:
-    text = DEVICE_ID_RE.sub("rp1-<hidden>", text)
+    text = DEVICE_ID_ANYCASE_RE.sub("rp1-<hidden>", text)
     home = str(Path.home())
     if home and home != "/":
-        text = text.replace(home, "~")
+        text = re.sub(re.escape(home), "~", text, flags=re.IGNORECASE)
+    # Any other user folder (another account, a path pasted from elsewhere).
+    text = re.sub(r"(?i)([\\/](?:Users|home)[\\/])[^\\/\s]+", r"\1<user>", text)
     user = os.environ.get("USER") or os.environ.get("USERNAME")
     if user and len(user) > 2:
         text = re.sub(rf"\b{re.escape(user)}\b", "<user>", text)
@@ -581,7 +686,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--releases", type=Path, default=REPO / "releases.json", help="expected checksums (default: releases.json next to tools/)")
     p.add_argument("--workdir", type=Path, default=DEFAULT_WORKDIR, help="where downloads and the report draft go (default: ~/.raily-pin)")
     p.add_argument("--version", help="firmware version (default: 'latest' in releases.json)")
-    p.add_argument("--timeout", type=float, default=90, help="seconds to wait for the board or its drive")
+    p.add_argument("--timeout", type=float, default=120, help="seconds to wait for the board or its drive")
     p.add_argument("--yes", action="store_true", help="the person agreed to write to the board")
     p.add_argument(
         "--local-dir",
