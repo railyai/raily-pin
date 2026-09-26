@@ -10,7 +10,7 @@ This repository holds everything a self-builder needs:
 
 | Folder / file | What it is | Licence |
 | --- | --- | --- |
-| [`firmware/`](firmware/) | Arduino source of the pin firmware (mirror of the release build) | Apache-2.0 |
+| [`firmware/`](firmware/) | Arduino source of the pin firmware (mirror of the release build; see `firmware/SOURCE.md`) | Apache-2.0 |
 | [`flash.md`](flash.md) | Step-by-step flashing instructions an AI agent follows | Apache-2.0 |
 | [`SKILL.md`](SKILL.md), [`AGENTS.md`](AGENTS.md) | The same instructions packaged for Claude Code, Codex and Cursor | Apache-2.0 |
 | [`tools/raily_pin_flash.py`](tools/raily_pin_flash.py) | The small script the agent runs; read it before you run it | Apache-2.0 |
@@ -59,8 +59,8 @@ Prefer to do it by hand? Follow [`docs/manual-flash.md`](docs/manual-flash.md).
 ### Using the skill directly
 
 - **Claude Code:** clone this repository into your skills folder —
-  `git clone https://github.com/railyai/raily-pin ~/.claude/skills/raily-pin`
-  — then ask *"flash my Raily Pin"*.
+  `git clone --branch v0.3.0 https://github.com/railyai/raily-pin ~/.claude/skills/raily-pin`
+  (the current release tag) — then ask *"flash my Raily Pin"*.
 - **Codex / Cursor:** open this repository as the workspace; the agent reads
   [`AGENTS.md`](AGENTS.md).
 

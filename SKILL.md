@@ -9,10 +9,12 @@ The full procedure is [`flash.md`](flash.md) in this folder. It is the same
 file that https://atlas.railyai.com/flash.md serves. Read it completely
 before you start, then follow it step by step.
 
-This folder is a clone of https://github.com/railyai/raily-pin. Run
-`git -C <this folder> pull --ff-only` first so `releases.json` (the expected
-checksums) and `tools/raily_pin_flash.py` are current, then use this folder
-as the `raily-pin` folder from Step 1 of flash.md (skip the clone).
+This folder is a clone of https://github.com/railyai/raily-pin. Check out
+the release tag that https://atlas.railyai.com/flash.md names
+(`git -C <this folder> fetch --tags` then `git -C <this folder> checkout <tag>`),
+never an untagged `main`, so `releases.json` (the expected checksums) and
+`tools/raily_pin_flash.py` are the reviewed release. Then use this folder as
+the `raily-pin` folder from Step 1 of flash.md (skip the clone).
 
 The rules, in short (flash.md has the full list):
 

@@ -58,7 +58,7 @@ Nothing is installed system-wide."
 macOS / Linux:
 
 ```bash
-git clone --depth 1 https://github.com/railyai/raily-pin ~/raily-pin
+git clone --depth 1 --branch v0.3.0 https://github.com/railyai/raily-pin ~/raily-pin
 cd ~/raily-pin
 python3 -m venv .venv
 .venv/bin/pip install --disable-pip-version-check --require-hashes -r tools/requirements.txt
@@ -67,14 +67,16 @@ python3 -m venv .venv
 Windows (PowerShell):
 
 ```powershell
-git clone --depth 1 https://github.com/railyai/raily-pin $HOME\raily-pin
+git clone --depth 1 --branch v0.3.0 https://github.com/railyai/raily-pin $HOME\raily-pin
 cd $HOME\raily-pin
 py -3 -m venv .venv
 .venv\Scripts\pip install --disable-pip-version-check --require-hashes -r tools\requirements.txt
 ```
 
-If `~/raily-pin` already exists, run `git -C ~/raily-pin pull --ff-only`
-instead of cloning. Below, `PY` means `.venv/bin/python` (macOS/Linux) or
+`v0.3.0` is the release this page belongs to: always use the tag named
+here, never whatever `main` holds. If `~/raily-pin` already exists, run
+`git -C ~/raily-pin fetch --depth 1 origin tag v0.3.0` and
+`git -C ~/raily-pin checkout v0.3.0` instead of cloning. Below, `PY` means `.venv/bin/python` (macOS/Linux) or
 `.venv\Scripts\python` (Windows), run from the `raily-pin` folder.
 
 Offer the person a look at `tools/raily_pin_flash.py` before you run it (it

@@ -3,7 +3,7 @@
 This folder mirrors the Raily Pin firmware from Raily's main repository.
 
 - firmware version: `0.2.3-qa`
-- source commit: `3c33f5c2b79da5a988cf9e17254d39e8133d589b`
+- source commit: `e7c671b881d065983588821abf86a60e3bf131aa`
 - synced: 2026-09-26
 - note: this tree has changes that are not in the released 0.2.3-qa build yet
 

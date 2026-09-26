@@ -4,8 +4,8 @@
 
 Follow [`flash.md`](flash.md) exactly, step by step. It is the same file
 that https://atlas.railyai.com/flash.md serves. This checkout is the
-`raily-pin` folder from its Step 1: run `git pull --ff-only` and skip the
-clone.
+`raily-pin` folder from its Step 1: check out the release tag flash.md
+names (never an untagged `main`) and skip the clone.
 
 Non-negotiable (details in flash.md):
 
@@ -31,5 +31,6 @@ Non-negotiable (details in flash.md):
 - Keep the Bluetooth protocol (service and characteristic UUIDs, payloads)
   and the `FW_VERSION` format unchanged, or the app and server will reject
   the pin. An over-the-air update from Raily replaces a self-built image.
-- Keep `tools/raily_pin_flash.py` dependency-free apart from
-  `tools/requirements.txt`, and keep every safety rule above.
+- `tools/raily_pin_flash.py` uses the standard library plus the packages
+  pinned in `tools/requirements.txt`; keep it that way, and keep every
+  safety rule above.
