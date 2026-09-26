@@ -13,7 +13,7 @@ body:
     id: firmware
     attributes:
       label: Firmware version
-      description: Shown in the Raily Pin app (Settings), or the "fw" field of serial `i`.
+      description: Shown in the Raily Pin app (Settings), or in the reply to `i` over USB serial.
     validations:
       required: true
   - type: dropdown
@@ -50,5 +50,5 @@ body:
     id: serial
     attributes:
       label: Serial output (optional)
-      description: 115200 baud. Replace the device_id value with rp1-<hidden>.
+      description: 115200 baud. Replace your pin's ID (rp1-…) with rp1-<hidden>.
       render: text
