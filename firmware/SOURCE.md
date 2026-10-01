@@ -2,10 +2,12 @@
 
 This folder mirrors the Raily Pin firmware from Raily's main repository.
 
-- firmware version: `0.2.3-qa`
-- source commit: `5ce7883c09582fe67b96c7d178fb55d52b3b77f7`
-- synced: 2026-09-26
-- note: this tree has changes that are not in the released 0.2.3-qa build yet
+- firmware version: `0.2.20-qa`
+- source commit: `380ca200a69bc976cd431ca5600c5841258c3215` (the 0.2.20-qa release)
+- synced: 2026-10-01
 
-Build: `arduino-cli compile -b Seeeduino:nrf52:xiaonRF52840 firmware/RailyPinsP1`.
+
+Build: `arduino-cli compile -b Seeeduino:nrf52:xiaonRF52840 firmware/RailyPinsP1`
+with the U8g2 library 2.37.1 installed (the keyring OLED, from 0.2.10-qa):
+`ARDUINO_LIBRARY_ENABLE_UNSAFE_INSTALL=true arduino-cli lib install --git-url https://github.com/olikraus/U8g2_Arduino.git#2.37.1`.
 Licence: Apache-2.0 (see `LICENSE` at the repository root).

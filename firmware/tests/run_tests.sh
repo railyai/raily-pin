@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
-# Host-side unit tests for the firmware counter restore selection.
-# Pure C++ — no Arduino toolchain needed.
+# Host-side unit tests for the pure firmware headers (counter restore,
+# press and feedback gates, SHA-256/HMAC, server pass, secret record,
+# bind window, device_info, BLE bond table, the held press of bonding stage 2, screen_state payload, vibration rhythms, the OLED screen
+# state (press, screen_state, fall, «found you», the agent's counts and notifications), the mascot record and composer,
+# serial `i`'s screen_state bench object). No Arduino toolchain needed: g++, and python3 with
+# Pillow for the OLED golden frames and asset checks.
 set -euo pipefail
 cd "$(dirname "$0")"
 command -v g++ >/dev/null || { echo "run_tests.sh: g++ not found" >&2; exit 127; }
@@ -15,3 +19,69 @@ g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
 g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
     test_feedback_state.cpp -o "$BUILD_DIR/test_feedback_state"
 "$BUILD_DIR/test_feedback_state"
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+    test_hmac_sha256.cpp -o "$BUILD_DIR/test_hmac_sha256"
+"$BUILD_DIR/test_hmac_sha256"
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+    test_server_pass.cpp -o "$BUILD_DIR/test_server_pass"
+"$BUILD_DIR/test_server_pass"
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined -DRAILY_SEAL_PROD \
+    test_server_pass.cpp -o "$BUILD_DIR/test_server_pass_prod"
+"$BUILD_DIR/test_server_pass_prod"
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+    test_bind_window.cpp -o "$BUILD_DIR/test_bind_window"
+"$BUILD_DIR/test_bind_window"
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+    test_device_info.cpp -o "$BUILD_DIR/test_device_info"
+"$BUILD_DIR/test_device_info"
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+    test_bond_table.cpp -o "$BUILD_DIR/test_bond_table"
+"$BUILD_DIR/test_bond_table"
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+    test_press_hold.cpp -o "$BUILD_DIR/test_press_hold"
+"$BUILD_DIR/test_press_hold"
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+    test_screen_payload.cpp -o "$BUILD_DIR/test_screen_payload"
+"$BUILD_DIR/test_screen_payload"
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+    test_rhythm.cpp -o "$BUILD_DIR/test_rhythm"
+"$BUILD_DIR/test_rhythm"
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+    test_screen_state.cpp -o "$BUILD_DIR/test_screen_state"
+"$BUILD_DIR/test_screen_state"
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+    test_screen_agent.cpp -o "$BUILD_DIR/test_screen_agent"
+"$BUILD_DIR/test_screen_agent"
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+    test_screen_fall.cpp -o "$BUILD_DIR/test_screen_fall"
+"$BUILD_DIR/test_screen_fall"
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+    test_screen_found_you.cpp -o "$BUILD_DIR/test_screen_found_you"
+"$BUILD_DIR/test_screen_found_you"
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+    test_screen_counts.cpp -o "$BUILD_DIR/test_screen_counts"
+"$BUILD_DIR/test_screen_counts"
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+    test_screen_notify.cpp -o "$BUILD_DIR/test_screen_notify"
+"$BUILD_DIR/test_screen_notify"
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+    test_mascot_record.cpp -o "$BUILD_DIR/test_mascot_record"
+"$BUILD_DIR/test_mascot_record"
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+    test_bench_serial.cpp -o "$BUILD_DIR/test_bench_serial"
+"$BUILD_DIR/test_bench_serial"
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+    test_screen_bench.cpp -o "$BUILD_DIR/test_screen_bench"
+"$BUILD_DIR/test_screen_bench"
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+    test_oled_compose.cpp -o "$BUILD_DIR/test_oled_compose"
+mkdir -p "$BUILD_DIR/oled"
+"$BUILD_DIR/test_oled_compose" oled_golden/manifest.txt "$BUILD_DIR/oled"
+python3 -B check_oled_golden.py "$BUILD_DIR/oled"
+python3 -B check_oled_assets.py
+
+python3 check_ble_setup.py
+python3 check_authorize_replies.py
+python3 check_reset_reason.py
+python3 -B check_oled_boot_order.py
+python3 -B check_fall_path.py

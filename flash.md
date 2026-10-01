@@ -29,7 +29,7 @@ the person in their language, in plain words, one step at a time.
    error message or a forum post suggests it. Never use `--local-dir`
    (maintainers only).
 6. **Only this board.** The script refuses any USB device that is not a XIAO
-   nRF52840 (USB `2886:8044` running firmware, `2886:0045` or `2886:0044` in
+   nRF52840 (USB `2886:8044` running firmware, `2886:8045` for a factory-fresh Sense board, `2886:0045` or `2886:0044` in
    its bootloader). Do not work around that. If the person has another board,
    tell them it is not supported.
 7. **Do not post anything for the person.** On failure you write a draft;
@@ -143,6 +143,12 @@ back. If it has not come back after about 30 seconds, ask the person to
 double-tap RESET again; the script keeps waiting for up to two minutes. It
 succeeds only when the drive reports an `0.9.2-OTAFIX2.3…` bootloader.
 
+- `"status": "check"` → the update usually worked, but the board restarted
+  into its old program instead of showing the drive. Ask for one more
+  double-tap and run Step 4 (`bootloader`) again. Run `install-bootloader`
+  again **only** if that check still says `needs_update`; never copy the
+  bootloader twice without checking in between.
+
 ## Step 6 — Flash the firmware
 
 Make sure the XIAO drive is visible (after Step 5 it usually is; otherwise
@@ -156,6 +162,10 @@ PY tools/raily_pin_flash.py --yes flash
 The drive disappears as the board restarts into the Raily Pin firmware.
 On Windows or macOS a "could not be completed" or "disk not ejected
 properly" message at this moment is normal.
+
+- `"status": "check"` → the drive vanished before the copy reported done;
+  the board usually has the whole file. Go to Step 7 (`verify`). Flash
+  again only if the pin does not answer with the new version.
 
 If copying to the drive keeps failing, use the serial fallback (it needs no
 drive, only the USB serial port; the bootloader must already be OTAFIX):

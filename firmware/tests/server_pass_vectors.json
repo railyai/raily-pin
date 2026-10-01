@@ -1,0 +1,67 @@
+{
+  "_comment": "Shared by hardware/firmware/tests (C++) and the server slice (Python). Pass = version, class, arg, first 16 bytes of HMAC-SHA256(S, 'raily-pass-v1' | u8 len(device_id) | device_id | version | class | arg | nonce). Seal keys = HKDF-SHA256(salt empty, ikm = ECDH x, info = 'raily-seal-v1' | E): 16-byte AES-CCM key, 13-byte nonce.",
+  "passes": [
+    {
+      "name": "class02_arg01",
+      "secret": "101112131415161718191a1b1c1d1e1f",
+      "device_id": "rp1-0123456789abcdef",
+      "class": 2,
+      "arg": 1,
+      "nonce": "a0a1a2a3a4a5a6a7a8a9aaabacadaeaf",
+      "pass": "010201a21f96e47293582c9ad47e0ccc351285"
+    },
+    {
+      "name": "class02_arg02",
+      "secret": "101112131415161718191a1b1c1d1e1f",
+      "device_id": "rp1-0123456789abcdef",
+      "class": 2,
+      "arg": 2,
+      "nonce": "a1a2a3a4a5a6a7a8a9aaabacadaeafb0",
+      "pass": "010202064241534eea2c33b5ff5e976e0a5b30"
+    },
+    {
+      "name": "class03_arg00",
+      "secret": "101112131415161718191a1b1c1d1e1f",
+      "device_id": "rp1-0123456789abcdef",
+      "class": 3,
+      "arg": 0,
+      "nonce": "a2a3a4a5a6a7a8a9aaabacadaeafb0b1",
+      "pass": "0103009cb3988901936c793d65930e99fdc311"
+    },
+    {
+      "name": "class04_arg00",
+      "secret": "101112131415161718191a1b1c1d1e1f",
+      "device_id": "rp1-0123456789abcdef",
+      "class": 4,
+      "arg": 0,
+      "nonce": "a3a4a5a6a7a8a9aaabacadaeafb0b1b2",
+      "pass": "010400b8ccc25a6d53c6a2f260ed74ba260585"
+    },
+    {
+      "name": "class05_arg00",
+      "secret": "101112131415161718191a1b1c1d1e1f",
+      "device_id": "rp1-0123456789abcdef",
+      "class": 5,
+      "arg": 0,
+      "nonce": "a4a5a6a7a8a9aaabacadaeafb0b1b2b3",
+      "pass": "010500035e801ad44201f2dd65e022aa3dfe61"
+    },
+    {
+      "name": "class06_arg00",
+      "secret": "101112131415161718191a1b1c1d1e1f",
+      "device_id": "rp1-0123456789abcdef",
+      "class": 6,
+      "arg": 0,
+      "nonce": "a5a6a7a8a9aaabacadaeafb0b1b2b3b4",
+      "pass": "0106009ce441e2a166e41211f5791e4d39b521"
+    }
+  ],
+  "seal_kdf": [
+    {
+      "shared_x": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "ephemeral": "040102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f40",
+      "aes_key": "4d38a61c1aec3dc3a2f3619ad225d059",
+      "ccm_nonce": "988c46cb1c4aca0578a525c2a2"
+    }
+  ]
+}

@@ -1,5 +1,7 @@
 # Raily Pin
 
+> **2026-09-30:** the motor changed to the SparkFun DA7280 on a pre-soldered XIAO Sense, no soldering; this guide is the previous edition, a new one is coming; the parts list is [atlas.railyai.com/build](https://atlas.railyai.com/build)
+
 Raily Pin is a small Bluetooth button for [Raily AI](https://railyai.com).
 You press it when someone nearby catches your eye; your phone sends the
 press, with your location, to your Raily agent, and the agent checks the
@@ -84,5 +86,5 @@ are licensed under
 [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 ([`shell/LICENSE`](shell/LICENSE), [`guide/LICENSE`](guide/LICENSE)): you
 may remix them and share your remixes under the same licence, but not sell
-them. Copyright © 2026 Raily AI. "Raily" and the Raily logo are trademarks
-of Raily AI and are not covered by these licences.
+them. Copyright © 2026 Raily LLC. "Raily" and the Raily logo are trademarks
+of Raily LLC and are not covered by these licences.
