@@ -50,5 +50,21 @@ int main() {
   expect(!lights.red, "feedback stays rate-limited across millis rollover");
   lights = wrapped.tick(401, true, 0);
   expect(lights.red, "queued feedback starts after rollover cooldown");
+  // The gestures rhythm bytes (0x11 «found you») are not LED statuses: no
+  // red flash, and never the four-flash error. Other bytes above 4 still are.
+  for (uint8_t byte = 0x10; byte <= 0x18; byte++) {
+    FeedbackState rhythm = {};
+    bool red = false;
+    for (uint32_t now = 0; now < 1000; now += 10) red = rhythm.tick(now, true, now == 0 ? byte : 0).red || red;
+    char name[80];
+    snprintf(name, sizeof(name), "event_ack 0x%02x never flashes the LED", byte);
+    expect(!red, name);
+  }
+  FeedbackState unknown = {};
+  lights = unknown.tick(0, true, 0x20);
+  expect(lights.red, "an unknown byte above 0x18 still shows as an error");
+  FeedbackState five = {};
+  lights = five.tick(0, true, 5);
+  expect(lights.red, "and so does 5");
   return failures ? 1 : 0;
 }

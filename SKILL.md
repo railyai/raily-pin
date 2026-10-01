@@ -23,6 +23,6 @@ The rules, in short (flash.md has the full list):
 - No `sudo` or elevated shells, no `curl | sh`, no other download sources.
   Firmware comes only from `https://download.railyai.com/pins/`, checked
   against `releases.json` from GitHub.
-- Only a XIAO nRF52840 (USB `2886:8044`, bootloader `2886:0045`/`0044`).
+- Only a XIAO nRF52840 (USB `2886:8044`, factory Sense `2886:8045`, bootloader `2886:0045`/`0044`).
 - On failure, run the `report` step and let the person post the draft
   themselves. Never put the pin ID (`rp1-…`) in anything public.

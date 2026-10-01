@@ -29,6 +29,10 @@ struct FeedbackState {
       lastBlinkMs = now;
       wasConnected = connected;
     }
+    // The gestures rhythm bytes 0x10-0x18 (0x11 «found you») are not LED
+    // statuses: the screen and the motor carry them, the LED stays as it is.
+    // Any other byte above 4 still shows as an error.
+    if (pattern >= 0x10 && pattern <= 0x18) pattern = 0;
     if (pattern != 0) {
       if (pattern > 4) pattern = 4;
       queuedPattern = pattern;  // bounded latest-wins, no unbounded queue

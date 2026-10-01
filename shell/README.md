@@ -13,4 +13,4 @@ then this folder holds only the licence. Design constraints for the shell:
 
 Licence: [CC BY-NC-SA 4.0](LICENSE). You may remix and share the models
 under the same licence, but not sell them or prints of them. Copyright ©
-2026 Raily AI.
+2026 Raily LLC.

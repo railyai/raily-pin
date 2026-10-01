@@ -51,10 +51,15 @@ DOWNLOAD_PREFIX = DOWNLOAD_ORIGIN + "/pins/"
 
 XIAO_VID = 0x2886
 APP_PID = 0x8044  # firmware running ("XIAO nRF52840")
+# A factory-fresh XIAO nRF52840 Sense runs Seeed's demo sketch, which
+# enumerates as 0x8045 ("Seeed XIAO nRF52840 Sense"), found on a stock board
+# on 2026-10-01.
+APP_PID_SENSE = 0x8045
 BOOT_PID = 0x0045  # UF2 bootloader (double-tap RESET)
 BOOT_PID_PLAIN = 0x0044  # UF2 bootloader of the plain (non-Sense) XIAO
 ALLOWED = {
     (XIAO_VID, APP_PID): "app",
+    (XIAO_VID, APP_PID_SENSE): "app",
     (XIAO_VID, BOOT_PID): "bootloader",
     (XIAO_VID, BOOT_PID_PLAIN): "bootloader",
 }
@@ -78,6 +83,10 @@ DEFAULT_WORKDIR = Path.home() / ".raily-pin"
 
 class Stop(Exception):
     """A step failed; the message is shown to the person as-is."""
+
+
+class DriveTimeout(Stop):
+    """No XIAO drive appeared in time (never raised for two drives)."""
 
 
 def say(msg: str) -> None:
@@ -110,12 +119,18 @@ def pick_release(releases: dict, version: str | None) -> dict:
 
 def board_variant(info: dict, mount: Path | None = None) -> str:
     """'sense' or 'plain'. Factory boards say Seeed_XIAO_nRF52840_Sense,
-    OTAFIX says nRF52840-SeeedXiaoSense-v1; the drive name is a second hint."""
+    OTAFIX says nRF52840-SeeedXiaoSense-v1. The board id decides; the drive
+    name only fills in when INFO_UF2.TXT has no board id, because a plain
+    board that runs a Sense bootloader also mounts as XIAO-SENSE."""
     board_id = (info.get("board_id") or "").lower()
     drive = (mount.name if mount else "").upper()
-    if "sense" in board_id or drive == "XIAO-SENSE":
+    if "sense" in board_id:
         return "sense"
     if "xiao" in board_id:
+        return "plain"
+    if not board_id and drive == "XIAO-SENSE":
+        return "sense"
+    if not board_id and drive == "XIAO-BOOT":
         return "plain"
     raise Stop(f"unknown board {info.get('board_id')!r}: only the XIAO nRF52840 and XIAO nRF52840 Sense are supported")
 
@@ -379,7 +394,9 @@ def wait_for_drive(timeout: float, accept=None) -> tuple[Path, dict]:
             if accept is None or accept(last[1]):
                 return last
         if time.monotonic() > deadline:
-            if last is not None:
+            # A drive that was seen but is gone now (the old mount right after a
+            # copy) counts as "no drive", not as an answer from the board.
+            if last is not None and drives:
                 return last
             hint = (
                 "The XIAO drive did not appear. Double-tap the RESET button quickly (two taps within half a second); "
@@ -387,7 +404,7 @@ def wait_for_drive(timeout: float, accept=None) -> tuple[Path, dict]:
             )
             if platform.system() == "Linux":
                 hint += " On Linux without automatic mounting, open the drive once in the file manager so it gets mounted."
-            raise Stop(hint)
+            raise DriveTimeout(hint)
         time.sleep(1)
 
 
@@ -438,7 +455,15 @@ def check_uf2(path: Path, family_id: int = NRF52840_FAMILY, data: bytes | None =
 GONE_ERRNOS = {errno.ENOENT, errno.EIO, errno.ENXIO, errno.ENODEV, getattr(errno, "ESTALE", -1)}
 
 
-def copy_to_drive(name: str, data: bytes, mount: Path) -> None:
+def copy_to_drive(name: str, data: bytes, mount: Path) -> bool:
+    """True once every byte is out; False when the drive vanished early.
+
+    The board restarts as soon as it holds the whole file, and the computer
+    can report that before its own copy loop finishes (seen on macOS on
+    2026-10-01: both the bootloader and the firmware took, while the copy
+    stopped at 64 KiB steps). So an early disappearance means "unconfirmed",
+    never "copy again": the caller checks the board instead.
+    """
     """Write already-verified bytes to the drive (never re-read from disk)."""
     check_file_name(name)
     dest = mount / name
@@ -461,11 +486,24 @@ def copy_to_drive(name: str, data: bytes, mount: Path) -> None:
         # vanish before the close. That is only normal once every byte is out.
         if written < len(data) and exc.errno not in GONE_ERRNOS:
             raise Stop(f"copying {name} to {mount} failed after {written} of {len(data)} bytes: {exc}") from exc
+        if written == 0:
+            # Nothing reached the board, so there is nothing to check: the copy
+            # simply never started and is safe to run again.
+            raise Stop(
+                f"the drive went away before any of {name} was written. Double-tap RESET so the drive "
+                "comes back, then run this step again."
+            ) from exc
         if written < len(data):
-            raise Stop(f"the drive went away after {written} of {len(data)} bytes; double-tap RESET and run this step again") from exc
+            say(
+                f"  the drive went away after {written} of {len(data)} bytes. The board often takes the "
+                "whole file and restarts before the copy reports done, so do NOT copy it again yet: "
+                "check the board first."
+            )
+            return False
         if exc.errno not in GONE_ERRNOS:
             raise Stop(f"finishing the copy of {name} to {mount} failed: {exc}") from exc
         say(f"  the drive went away at the end of the copy ({exc.__class__.__name__}); that is normal when the board reboots")
+    return True
 
 
 def expected_files(args) -> tuple[dict, dict]:
@@ -526,14 +564,25 @@ def cmd_install_bootloader(args) -> dict:
         "Installing the OTAFIX bootloader. Do NOT unplug the board until the drive comes back "
         "(about 10-30 seconds): an interrupted bootloader write is the one way to make recovery hard."
     )
-    copy_to_drive(variant["file"], data, mount)
+    complete = copy_to_drive(variant["file"], data, mount)
     say(
         "Waiting for the drive to come back with the new bootloader. If it has not come back after "
         "30 seconds, double-tap RESET again (the new bootloader may start in Bluetooth update mode)."
     )
     # The old mount can linger for a while, so keep polling until the drive
     # reports OTAFIX (or the time is up) instead of trusting the first read.
-    mount2, info2 = wait_for_drive(args.timeout, accept=lambda i: is_otafix(releases, i.get("bootloader")))
+    try:
+        mount2, info2 = wait_for_drive(args.timeout, accept=lambda i: is_otafix(releases, i.get("bootloader")))
+    except DriveTimeout:
+        # Only "no drive" is the normal case here; "two drives" must still stop.
+        # After the update the board usually restarts into its old program,
+        # so no drive comes back by itself. That is not a failure.
+        say(
+            "The drive did not come back by itself; that is normal. Double-tap RESET once more and run "
+            "the bootloader step to see which bootloader the board has now. Run install-bootloader again "
+            "only if that check still says needs_update."
+        )
+        return {"ok": True, "status": "check", "copy_complete": complete, "next": "bootloader"}
     if not is_otafix(releases, info2.get("bootloader")):
         raise Stop(
             f"After the update the drive reports bootloader {info2.get('bootloader')!r}, not {required}. "
@@ -556,7 +605,9 @@ def cmd_flash(args) -> dict:
         )
     if not args.yes:
         raise Stop("flash writes the firmware. Re-run with --yes after the person has agreed.")
-    copy_to_drive(rel["uf2"]["file"], data, mount)
+    if not copy_to_drive(rel["uf2"]["file"], data, mount):
+        say("Run the verify step now: if the pin answers with the new version, the flash worked.")
+        return {"ok": True, "status": "check", "version": rel["version"], "method": "uf2", "next": "verify"}
     say("The board is restarting into the Raily Pin firmware.")
     return {"ok": True, "version": rel["version"], "method": "uf2"}
 
