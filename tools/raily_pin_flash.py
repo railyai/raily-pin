@@ -730,7 +730,7 @@ def cmd_report(args) -> dict:
         "```",
         "",
         "_Draft written by the Raily Pin flashing tool. The pin's device ID is left out on purpose;"
-        " if support needs it, send it through Help in the Raily Pin app._",
+        " if support needs it, send it through Help in the Raily Device app._",
     ]
     body = "\n".join(lines) + "\n"
     out = args.workdir / "discussion-draft.md"

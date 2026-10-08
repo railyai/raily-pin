@@ -192,13 +192,16 @@ did.
 
 Tell the person, in their language:
 
-1. Install the **Raily Pin** app (the link is on
-   [atlas.railyai.com](https://atlas.railyai.com)), open it and sign in.
+1. Install the **Raily Device** app (the link is on
+   [devices.railyai.com](https://devices.railyai.com)), open it and sign in.
 2. Keep the pin close to the phone and **press the button** (or hold the
    button in the app). The app finds the pin and binds it to their account.
-3. Do this now: until a pin is bound, the first phone that connects to it
+3. Last step: when the app asks, tap **Pair** and confirm the Bluetooth
+   request on the iPhone. Until the pin is paired, its button presses do
+   not reach the phone.
+4. Do this now: until a pin is bound, the first phone that connects to it
    can claim it.
-4. The pin's ID is shown in the app. Keep it private.
+5. The pin's ID is shown in the app. Keep it private.
 
 Then remove the downloaded files if they like: `~/.raily-pin/files`. Leave
 `~/raily-pin` in place; it makes the next flash faster.
@@ -228,7 +231,7 @@ download sources or elevated rights. Then:
    (`https://github.com/railyai/raily-pin/discussions/new?category=flashing-help…`).
    They read it, change what they want, and post it themselves.
 4. If support needs the pin ID, the person sends it through **Help** in the
-   Raily Pin app, never in the public post.
+   Raily Device app, never in the public post.
 
 The by-hand path, without an agent, is in
 [`docs/manual-flash.md`](https://github.com/railyai/raily-pin/blob/v0.3.0/docs/manual-flash.md).

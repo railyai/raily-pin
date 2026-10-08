@@ -13,7 +13,7 @@ body:
     id: firmware
     attributes:
       label: Firmware version
-      description: Shown in the Raily Pin app (Settings), or in the reply to `i` over USB serial.
+      description: Shown in the Raily Device app (Settings), or in the reply to `i` over USB serial.
     validations:
       required: true
   - type: dropdown

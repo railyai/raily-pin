@@ -3,7 +3,7 @@
 ## If the person wants to flash a pin
 
 Follow [`flash.md`](flash.md) exactly, step by step. It is the same file
-that https://atlas.railyai.com/flash.md serves. This checkout is the
+that https://devices.railyai.com/flash.md serves. This checkout is the
 `raily-pin` folder from its Step 1: check out the release tag flash.md
 names (never an untagged `main`) and skip the clone.
 

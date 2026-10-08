@@ -1,6 +1,6 @@
 # Raily Pin
 
-> **2026-09-30:** the motor changed to the SparkFun DA7280 on a pre-soldered XIAO Sense, no soldering; this guide is the previous edition, a new one is coming; the parts list is [atlas.railyai.com/build](https://atlas.railyai.com/build)
+> **2026-09-30:** the motor changed to the SparkFun DA7280 on a pre-soldered XIAO Sense, no soldering; this guide is the previous edition, a new one is coming; the parts list is [devices.railyai.com/build](https://devices.railyai.com/build)
 
 Raily Pin is a small Bluetooth button for [Raily AI](https://railyai.com).
 You press it when someone nearby catches your eye; your phone sends the
@@ -21,7 +21,7 @@ This repository holds everything a self-builder needs:
 | [`guide/`](guide/) | Assembly guide | CC BY-NC-SA 4.0 |
 
 Downloads (firmware images, the printable guide, the shell files) live on
-**[atlas.railyai.com](https://atlas.railyai.com)**. Firmware binaries are
+**[devices.railyai.com](https://devices.railyai.com)**. Firmware binaries are
 served only from `https://download.railyai.com/pins/`.
 
 ## What you need (bill of materials)
@@ -45,16 +45,18 @@ does not identify itself as a XIAO nRF52840 over USB.
    with a data USB-C cable.
 2. Open Claude Code, Codex or Cursor in any folder and paste:
 
-   > Прошей мой Raily Pin по инструкции https://atlas.railyai.com/flash.md
+   > Flash my Raily Pin using https://github.com/railyai/raily-pin
 
-   (English works too: *Flash my Raily Pin following
-   https://atlas.railyai.com/flash.md*.)
+   This is the same sentence as on devices.railyai.com/build and in the kit
+   email. Any language works, for example: *Прошей мой Raily Pin по
+   https://github.com/railyai/raily-pin*.
 3. The agent explains each step before it runs it. It installs one Python
    tool into a private folder (no administrator password), downloads the
    firmware only from `download.railyai.com`, checks its SHA-256 checksum,
    and refuses any board other than the XIAO nRF52840.
-4. When it is done, open the **Raily Pin** app on your phone, sign in and
+4. When it is done, open the **Raily Device** app on your phone, sign in and
    press the button. The app finds the pin and binds it to your account.
+   Then tap **Pair** and confirm on the iPhone, so the button works.
 
 Prefer to do it by hand? Follow [`docs/manual-flash.md`](docs/manual-flash.md).
 
@@ -74,7 +76,7 @@ Prefer to do it by hand? Follow [`docs/manual-flash.md`](docs/manual-flash.md).
   post it yourself.
 - **Firmware bugs:** [Issues](https://github.com/railyai/raily-pin/issues).
 - **Anything about your account or a specific pin:** use *Help* in the
-  Raily Pin app. Do not post your pin's ID (`rp1-…`) publicly.
+  Raily Device app. Do not post your pin's ID (`rp1-…`) publicly.
 - **Security problems:** see [`SECURITY.md`](SECURITY.md). Please do not
   open a public issue.
 

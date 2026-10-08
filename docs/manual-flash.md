@@ -5,7 +5,7 @@ computer and a USB-C cable that carries data, and a paperclip if the pin
 is already in its shell.
 
 **Before you start, download these files from
-[atlas.railyai.com](https://atlas.railyai.com)** (they come from
+[devices.railyai.com](https://devices.railyai.com)** (they come from
 `download.railyai.com/pins/`):
 
 | File | What it is |
@@ -60,11 +60,13 @@ The LED blinks blue while the pin waits for your phone.
 
 ## 5. Bind the pin
 
-1. Install the **Raily Pin** app (link on atlas.railyai.com), open it and
+1. Install the **Raily Device** app (link on devices.railyai.com), open it and
    sign in.
 2. Keep the pin next to the phone and press its button (or hold the button
    in the app). The app finds the pin and binds it to your account.
-3. Do this straight away: until a pin is bound, the first phone that
+3. Tap **Pair** in the app and confirm the Bluetooth request on the iPhone.
+   Until the pin is paired, its button presses do not reach the phone.
+4. Do this straight away: until a pin is bound, the first phone that
    connects to it can claim it.
 
 ## Something went wrong?
@@ -77,4 +79,4 @@ to unplug. Ask in
 [GitHub Discussions](https://github.com/railyai/raily-pin/discussions)
 with your board, the first line of `INFO_UF2.TXT`, your computer's
 operating system and what you saw. Do not post your pin's ID (`rp1-…`);
-if support needs it, send it through Help in the Raily Pin app.
+if support needs it, send it through Help in the Raily Device app.

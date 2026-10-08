@@ -6,7 +6,7 @@ body:
       value: |
         If an AI agent flashed your pin, paste the draft it wrote for you.
         **Do not post your pin's ID (`rp1-…`)**: if we need it, we will ask
-        you to send it through Help in the Raily Pin app.
+        you to send it through Help in the Raily Device app.
   - type: dropdown
     id: board
     attributes:
