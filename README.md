@@ -61,7 +61,7 @@ Prefer to do it by hand? Follow [`docs/manual-flash.md`](docs/manual-flash.md).
 ### Using the skill directly
 
 - **Claude Code:** clone this repository into your skills folder —
-  `git clone --branch v0.4.0 https://github.com/railyai/raily-pin ~/.claude/skills/raily-pin`
+  `git clone --branch v0.3.0 https://github.com/railyai/raily-pin ~/.claude/skills/raily-pin`
   (the current release tag) — then ask *"flash my Raily Pin"*.
 - **Codex / Cursor:** open this repository as the workspace; the agent reads
   [`AGENTS.md`](AGENTS.md).

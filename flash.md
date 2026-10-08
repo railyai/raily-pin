@@ -58,7 +58,7 @@ Nothing is installed system-wide."
 macOS / Linux:
 
 ```bash
-git clone --depth 1 --branch v0.4.0 https://github.com/railyai/raily-pin ~/raily-pin
+git clone --depth 1 --branch v0.3.0 https://github.com/railyai/raily-pin ~/raily-pin
 cd ~/raily-pin
 python3 -m venv .venv
 .venv/bin/pip install --disable-pip-version-check --require-hashes -r tools/requirements.txt
@@ -67,17 +67,17 @@ python3 -m venv .venv
 Windows (PowerShell):
 
 ```powershell
-git clone --depth 1 --branch v0.4.0 https://github.com/railyai/raily-pin $HOME\raily-pin
+git clone --depth 1 --branch v0.3.0 https://github.com/railyai/raily-pin $HOME\raily-pin
 cd $HOME\raily-pin
 py -3 -m venv .venv
 .venv\Scripts\pip install --disable-pip-version-check --require-hashes -r tools\requirements.txt
 ```
 
-`v0.4.0` is the release this page belongs to: always use the tag named
+`v0.3.0` is the release this page belongs to: always use the tag named
 here, never whatever `main` holds. Always make a fresh clone. If
 `~/raily-pin` already exists, do not reuse or change it (it could hold
 anything); clone into a new folder instead, for example
-`~/raily-pin-v0.4.0`, and use that folder below. Below, `PY` means `.venv/bin/python` (macOS/Linux) or
+`~/raily-pin-v0.3.0`, and use that folder below. Below, `PY` means `.venv/bin/python` (macOS/Linux) or
 `.venv\Scripts\python` (Windows), run from the `raily-pin` folder.
 
 Offer the person a look at `tools/raily_pin_flash.py` before you run it (it
@@ -231,4 +231,4 @@ download sources or elevated rights. Then:
    Raily Pin app, never in the public post.
 
 The by-hand path, without an agent, is in
-[`docs/manual-flash.md`](https://github.com/railyai/raily-pin/blob/v0.4.0/docs/manual-flash.md).
+[`docs/manual-flash.md`](https://github.com/railyai/raily-pin/blob/v0.3.0/docs/manual-flash.md).
