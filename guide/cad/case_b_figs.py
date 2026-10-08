@@ -1,4 +1,6 @@
-"""Take the case B (DA7280) figures from 3D printing into the guide as art/kcb-*.svg|png and add vector marks:
+"""Historical: the 18.1e-B cover figures. Edition B now uses case_b2_figs.py (cover 18.2-B, no part codes).
+
+Take the case B (DA7280) figures from 3D printing into the guide as art/kcb-*.svg|png and add vector marks:
 hole numbers 1-9 on the dowel step, the two locator dowels (2, 6) on the face step, a side-button callout on the closed view.
 
     python case_b_figs.py "<~/Desktop/Raily keyring 3D/guide-art/B>" ../art

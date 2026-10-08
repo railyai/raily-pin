@@ -742,6 +742,15 @@ KC_NOLABEL=1 KC_VERSION=v1.3 python bambu/build_bambu.py shelf3c  # shelf 17.3c,
 KC_VERSION=v1.3 python bambu/build_bambu.py parts back            # tray 17.1, no number
 ```
 
+The assembly guide's edition B figures come from `guide_render_b2.py`: it builds them from 18.2-B and the shelf
+without its number, then `../guide/cad/case_b2_figs.py` copies them into `../guide/art/` as `kcb-*` with the blue marks.
+
+```sh
+FIGS="$(mktemp -d)"                                    # one absolute folder for both steps
+python guide_render_b2.py "$FIGS"                      # needs cairo (DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib on macOS)
+(cd ../guide/cad && python case_b2_figs.py "$FIGS" ../art)
+```
+
 ## Licence
 
 The case model, scripts, print files and renders: **CC BY-NC-SA 4.0**, Raily.

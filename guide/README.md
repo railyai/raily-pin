@@ -37,7 +37,7 @@ node hardware/raily-pin-public/guide/render.mjs
 
 Board and bench scenes: `cd hardware/raily-pin-public/guide/cad && python scenes2.py ../art tile seat && python scenes3.py ../art motor usb button jst overview && python scenes5.py ../art meter charge phone && python scenes6.py ../art` (Python 3.11, `pip install cadquery`). The phone scene loads the case model from `KEYRING_CASE` (default `../../case`).
 
-Case pages: `python case_figs.py ../../case/guide-figures ../art` copies the case figures in and adds the callouts. Gemini provenance: `gem.py`, `gemini-jobs.py`, `gemini-full.py` (they need the reference renders in `cad/refs/`, not committed).
+Case pages: `python case_figs.py ../../case/guide-figures ../art` copies the case figures in and adds the callouts. Edition B (DA7280, cover 18.2-B, no part codes): `python case_b2_figs.py <figures from case/guide_render_b2.py> ../art` writes `art/kcb-*` (it replaces `case_b_figs.py`, the 18.1e-B figures). Gemini provenance: `gem.py`, `gemini-jobs.py`, `gemini-full.py` (they need the reference renders in `cad/refs/`, not committed).
 
 ## Licence
 - Guide: [CC BY-NC-SA 4.0](LICENSE).
