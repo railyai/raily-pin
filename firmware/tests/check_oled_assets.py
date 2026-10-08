@@ -110,10 +110,19 @@ def check_site(failures):
             stroke = re.search(r"strokeWidth=\"(\d+)\"", tag)
             if not stroke or int(stroke.group(1)) != S.FOLD_STROKE:
                 failures.append(f"fold: site stroke {stroke and stroke.group(1)} != generator {S.FOLD_STROKE}")
-    eyes = re.findall(r'<ellipse cx="(\d+)" cy=\{hollow \? (\d+) : (\d+)\}', src)
+    # The eyes share one y: `cy={eyeY}`, where `eyeY = hollow ? EYES_Y_HOLLOW : EYES_Y`.
+    eye_y = re.findall(r"\b(?:const|let)\s+eyeY\s*(?::\s*number)?\s*=\s*hollow\s*\?\s*(\d+)\s*:\s*(\d+)", src)
+    eye_x = re.findall(r'<ellipse cx="(\d+)" cy=\{\s*eyeY\s*\}', src)
     want = [(str(x), str(S.EYES_Y_HOLLOW), str(S.EYES_Y)) for x in S.EYES_X]
-    if eyes != want:
-        failures.append(f"site eyes {eyes} != generator {want}")
+    if len(eye_y) != 1:
+        failures.append(f"site eyes: expected one `const eyeY = hollow ? A : B`, found {len(eye_y)}")
+    elif not want:
+        failures.append("site eyes: generator has no EYES_X")
+    else:
+        hollow_y, y = eye_y[0]
+        eyes = [(x, hollow_y, y) for x in eye_x]
+        if eyes != want:
+            failures.append(f"site eyes {eyes} != generator {want}")
     if not [f for f in failures if f.startswith(S.SHAPES) or f.startswith("site ")]:
         print(f"PASS site mascot shapes match the generator ({', '.join(S.SHAPES)})")
 

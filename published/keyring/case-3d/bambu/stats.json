@@ -1,0 +1,2191 @@
+[
+ {
+  "printer": "x1c",
+  "label": "X1 Carbon / X1E / X1",
+  "project": "v1",
+  "plate": 1,
+  "name": "LED coupon (print first)",
+  "minutes": 13,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.47,
+    "model": 1.5
+   }
+  }
+ },
+ {
+  "printer": "x1c",
+  "label": "X1 Carbon / X1E / X1",
+  "project": "v1",
+  "plate": 2,
+  "name": "V1 case A (screws): tray + shelf",
+  "minutes": 60,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.47,
+    "support": 0.44,
+    "model": 19.32
+   }
+  }
+ },
+ {
+  "printer": "x1c",
+  "label": "X1 Carbon / X1E / X1",
+  "project": "v1",
+  "plate": 3,
+  "name": "V1 case A (screws): cover",
+  "minutes": 77,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.47,
+    "support": 11.45,
+    "model": 13.86
+   }
+  }
+ },
+ {
+  "printer": "x1c",
+  "label": "X1 Carbon / X1E / X1",
+  "project": "v1",
+  "plate": 4,
+  "name": "V1 case B (snap-fit): tray + shelf",
+  "minutes": 63,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.47,
+    "support": 0.44,
+    "model": 19.52
+   }
+  }
+ },
+ {
+  "printer": "x1c",
+  "label": "X1 Carbon / X1E / X1",
+  "project": "v1",
+  "plate": 5,
+  "name": "V1 case B (snap-fit): cover",
+  "minutes": 78,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.47,
+    "support": 11.3,
+    "model": 14.02
+   }
+  }
+ },
+ {
+  "printer": "x1c",
+  "label": "X1 Carbon / X1E / X1",
+  "project": "v5",
+  "plate": 1,
+  "name": "LED coupon (print first)",
+  "minutes": 13,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.47,
+    "model": 1.5
+   }
+  }
+ },
+ {
+  "printer": "x1c",
+  "label": "X1 Carbon / X1E / X1",
+  "project": "v5",
+  "plate": 2,
+  "name": "V5 case A (screws): tray + shelf",
+  "minutes": 139,
+  "changes": 52,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.47,
+    "support": 0.33,
+    "model": 20.25,
+    "purge": 10.61
+   },
+   "filament_2": {
+    "model": 1.81,
+    "purge": 4.87,
+    "support": 0.11
+   }
+  }
+ },
+ {
+  "printer": "x1c",
+  "label": "X1 Carbon / X1E / X1",
+  "project": "v5",
+  "plate": 3,
+  "name": "V5 case A (screws): cover",
+  "minutes": 77,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.47,
+    "support": 11.45,
+    "model": 13.86
+   }
+  }
+ },
+ {
+  "printer": "x1c",
+  "label": "X1 Carbon / X1E / X1",
+  "project": "v5",
+  "plate": 4,
+  "name": "V5 case B (snap-fit): tray + shelf",
+  "minutes": 141,
+  "changes": 52,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.47,
+    "support": 0.33,
+    "model": 20.46,
+    "purge": 10.61
+   },
+   "filament_2": {
+    "model": 1.81,
+    "purge": 4.87,
+    "support": 0.11
+   }
+  }
+ },
+ {
+  "printer": "x1c",
+  "label": "X1 Carbon / X1E / X1",
+  "project": "v5",
+  "plate": 5,
+  "name": "V5 case B (snap-fit): cover",
+  "minutes": 78,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.47,
+    "support": 11.3,
+    "model": 14.02
+   }
+  }
+ },
+ {
+  "printer": "x1c",
+  "label": "X1 Carbon / X1E / X1",
+  "project": "v5-batch",
+  "plate": 1,
+  "name": "V5 5 trays + 5 shelves (A)",
+  "minutes": 363,
+  "changes": 52,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.47,
+    "purge": 14.74,
+    "model": 94.42,
+    "support": 1.67
+   },
+   "filament_2": {
+    "purge": 7.54,
+    "support": 0.52,
+    "model": 2.21
+   }
+  }
+ },
+ {
+  "printer": "x1c",
+  "label": "X1 Carbon / X1E / X1",
+  "project": "v5-batch",
+  "plate": 2,
+  "name": "V5 5 covers (A)",
+  "minutes": 353,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.47,
+    "support": 57.27,
+    "model": 69.08
+   }
+  }
+ },
+ {
+  "printer": "x1c",
+  "label": "X1 Carbon / X1E / X1",
+  "project": "v1-noams",
+  "plate": 1,
+  "name": "White: tray + shelf (A)",
+  "minutes": 60,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.47,
+    "support": 0.44,
+    "model": 19.32
+   }
+  }
+ },
+ {
+  "printer": "x1c",
+  "label": "X1 Carbon / X1E / X1",
+  "project": "v1-noams",
+  "plate": 2,
+  "name": "Periwinkle: cover (A)",
+  "minutes": 77,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.47,
+    "support": 11.46,
+    "model": 13.86
+   }
+  }
+ },
+ {
+  "printer": "x1c",
+  "label": "X1 Carbon / X1E / X1",
+  "project": "v1-noams",
+  "plate": 3,
+  "name": "White: tray + shelf (B)",
+  "minutes": 63,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.47,
+    "support": 0.44,
+    "model": 19.52
+   }
+  }
+ },
+ {
+  "printer": "x1c",
+  "label": "X1 Carbon / X1E / X1",
+  "project": "v1-noams",
+  "plate": 4,
+  "name": "Periwinkle: cover (B)",
+  "minutes": 78,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.47,
+    "support": 11.32,
+    "model": 14.02
+   }
+  }
+ },
+ {
+  "printer": "p1s",
+  "label": "P1S",
+  "project": "v1",
+  "plate": 1,
+  "name": "LED coupon (print first)",
+  "minutes": 11,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.34,
+    "model": 1.5
+   }
+  }
+ },
+ {
+  "printer": "p1s",
+  "label": "P1S",
+  "project": "v1",
+  "plate": 2,
+  "name": "V1 case A (screws): tray + shelf",
+  "minutes": 58,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.34,
+    "support": 0.44,
+    "model": 19.32
+   }
+  }
+ },
+ {
+  "printer": "p1s",
+  "label": "P1S",
+  "project": "v1",
+  "plate": 3,
+  "name": "V1 case A (screws): cover",
+  "minutes": 75,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.34,
+    "support": 11.46,
+    "model": 13.86
+   }
+  }
+ },
+ {
+  "printer": "p1s",
+  "label": "P1S",
+  "project": "v1",
+  "plate": 4,
+  "name": "V1 case B (snap-fit): tray + shelf",
+  "minutes": 61,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.34,
+    "support": 0.44,
+    "model": 19.52
+   }
+  }
+ },
+ {
+  "printer": "p1s",
+  "label": "P1S",
+  "project": "v1",
+  "plate": 5,
+  "name": "V1 case B (snap-fit): cover",
+  "minutes": 76,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.34,
+    "support": 11.32,
+    "model": 14.02
+   }
+  }
+ },
+ {
+  "printer": "p1s",
+  "label": "P1S",
+  "project": "v5",
+  "plate": 1,
+  "name": "LED coupon (print first)",
+  "minutes": 11,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.34,
+    "model": 1.5
+   }
+  }
+ },
+ {
+  "printer": "p1s",
+  "label": "P1S",
+  "project": "v5",
+  "plate": 2,
+  "name": "V5 case A (screws): tray + shelf",
+  "minutes": 137,
+  "changes": 52,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.34,
+    "support": 0.33,
+    "model": 20.25,
+    "purge": 10.61
+   },
+   "filament_2": {
+    "model": 1.81,
+    "purge": 4.87,
+    "support": 0.11
+   }
+  }
+ },
+ {
+  "printer": "p1s",
+  "label": "P1S",
+  "project": "v5",
+  "plate": 3,
+  "name": "V5 case A (screws): cover",
+  "minutes": 75,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.34,
+    "support": 11.45,
+    "model": 13.86
+   }
+  }
+ },
+ {
+  "printer": "p1s",
+  "label": "P1S",
+  "project": "v5",
+  "plate": 4,
+  "name": "V5 case B (snap-fit): tray + shelf",
+  "minutes": 139,
+  "changes": 52,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.34,
+    "support": 0.33,
+    "model": 20.46,
+    "purge": 10.61
+   },
+   "filament_2": {
+    "model": 1.81,
+    "purge": 4.87,
+    "support": 0.11
+   }
+  }
+ },
+ {
+  "printer": "p1s",
+  "label": "P1S",
+  "project": "v5",
+  "plate": 5,
+  "name": "V5 case B (snap-fit): cover",
+  "minutes": 76,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.34,
+    "support": 11.3,
+    "model": 14.02
+   }
+  }
+ },
+ {
+  "printer": "p1s",
+  "label": "P1S",
+  "project": "v5-batch",
+  "plate": 1,
+  "name": "V5 5 trays + 5 shelves (A)",
+  "minutes": 361,
+  "changes": 52,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.34,
+    "purge": 14.74,
+    "model": 94.42,
+    "support": 1.67
+   },
+   "filament_2": {
+    "purge": 7.54,
+    "support": 0.52,
+    "model": 2.21
+   }
+  }
+ },
+ {
+  "printer": "p1s",
+  "label": "P1S",
+  "project": "v5-batch",
+  "plate": 2,
+  "name": "V5 5 covers (A)",
+  "minutes": 351,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.34,
+    "support": 57.27,
+    "model": 69.08
+   }
+  }
+ },
+ {
+  "printer": "p1s",
+  "label": "P1S",
+  "project": "v1-noams",
+  "plate": 1,
+  "name": "White: tray + shelf (A)",
+  "minutes": 58,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.34,
+    "support": 0.44,
+    "model": 19.32
+   }
+  }
+ },
+ {
+  "printer": "p1s",
+  "label": "P1S",
+  "project": "v1-noams",
+  "plate": 2,
+  "name": "Periwinkle: cover (A)",
+  "minutes": 75,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.34,
+    "support": 11.45,
+    "model": 13.86
+   }
+  }
+ },
+ {
+  "printer": "p1s",
+  "label": "P1S",
+  "project": "v1-noams",
+  "plate": 3,
+  "name": "White: tray + shelf (B)",
+  "minutes": 61,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.34,
+    "support": 0.44,
+    "model": 19.52
+   }
+  }
+ },
+ {
+  "printer": "p1s",
+  "label": "P1S",
+  "project": "v1-noams",
+  "plate": 4,
+  "name": "Periwinkle: cover (B)",
+  "minutes": 76,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.34,
+    "support": 11.3,
+    "model": 14.02
+   }
+  }
+ },
+ {
+  "printer": "p1p",
+  "label": "P1P",
+  "project": "v1",
+  "plate": 1,
+  "name": "LED coupon (print first)",
+  "minutes": 11,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.34,
+    "model": 1.5
+   }
+  }
+ },
+ {
+  "printer": "p1p",
+  "label": "P1P",
+  "project": "v1",
+  "plate": 2,
+  "name": "V1 case A (screws): tray + shelf",
+  "minutes": 59,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.34,
+    "support": 0.44,
+    "model": 19.32
+   }
+  }
+ },
+ {
+  "printer": "p1p",
+  "label": "P1P",
+  "project": "v1",
+  "plate": 3,
+  "name": "V1 case A (screws): cover",
+  "minutes": 76,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.34,
+    "support": 11.45,
+    "model": 13.86
+   }
+  }
+ },
+ {
+  "printer": "p1p",
+  "label": "P1P",
+  "project": "v1",
+  "plate": 4,
+  "name": "V1 case B (snap-fit): tray + shelf",
+  "minutes": 62,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.34,
+    "support": 0.44,
+    "model": 19.52
+   }
+  }
+ },
+ {
+  "printer": "p1p",
+  "label": "P1P",
+  "project": "v1",
+  "plate": 5,
+  "name": "V1 case B (snap-fit): cover",
+  "minutes": 77,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.34,
+    "support": 11.3,
+    "model": 14.02
+   }
+  }
+ },
+ {
+  "printer": "p1p",
+  "label": "P1P",
+  "project": "v5",
+  "plate": 1,
+  "name": "LED coupon (print first)",
+  "minutes": 11,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.34,
+    "model": 1.5
+   }
+  }
+ },
+ {
+  "printer": "p1p",
+  "label": "P1P",
+  "project": "v5",
+  "plate": 2,
+  "name": "V5 case A (screws): tray + shelf",
+  "minutes": 138,
+  "changes": 52,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.34,
+    "support": 0.33,
+    "model": 20.25,
+    "purge": 10.61
+   },
+   "filament_2": {
+    "model": 1.81,
+    "purge": 4.87,
+    "support": 0.11
+   }
+  }
+ },
+ {
+  "printer": "p1p",
+  "label": "P1P",
+  "project": "v5",
+  "plate": 3,
+  "name": "V5 case A (screws): cover",
+  "minutes": 76,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.34,
+    "support": 11.45,
+    "model": 13.86
+   }
+  }
+ },
+ {
+  "printer": "p1p",
+  "label": "P1P",
+  "project": "v5",
+  "plate": 4,
+  "name": "V5 case B (snap-fit): tray + shelf",
+  "minutes": 140,
+  "changes": 52,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.34,
+    "support": 0.33,
+    "model": 20.46,
+    "purge": 10.61
+   },
+   "filament_2": {
+    "model": 1.81,
+    "purge": 4.87,
+    "support": 0.11
+   }
+  }
+ },
+ {
+  "printer": "p1p",
+  "label": "P1P",
+  "project": "v5",
+  "plate": 5,
+  "name": "V5 case B (snap-fit): cover",
+  "minutes": 77,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.34,
+    "support": 11.3,
+    "model": 14.02
+   }
+  }
+ },
+ {
+  "printer": "p1p",
+  "label": "P1P",
+  "project": "v5-batch",
+  "plate": 1,
+  "name": "V5 5 trays + 5 shelves (A)",
+  "minutes": 361,
+  "changes": 52,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.34,
+    "purge": 14.74,
+    "model": 94.42,
+    "support": 1.67
+   },
+   "filament_2": {
+    "purge": 7.54,
+    "support": 0.52,
+    "model": 2.21
+   }
+  }
+ },
+ {
+  "printer": "p1p",
+  "label": "P1P",
+  "project": "v5-batch",
+  "plate": 2,
+  "name": "V5 5 covers (A)",
+  "minutes": 351,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.34,
+    "support": 57.27,
+    "model": 69.08
+   }
+  }
+ },
+ {
+  "printer": "p1p",
+  "label": "P1P",
+  "project": "v1-noams",
+  "plate": 1,
+  "name": "White: tray + shelf (A)",
+  "minutes": 59,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.34,
+    "support": 0.44,
+    "model": 19.32
+   }
+  }
+ },
+ {
+  "printer": "p1p",
+  "label": "P1P",
+  "project": "v1-noams",
+  "plate": 2,
+  "name": "Periwinkle: cover (A)",
+  "minutes": 76,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.34,
+    "support": 11.45,
+    "model": 13.86
+   }
+  }
+ },
+ {
+  "printer": "p1p",
+  "label": "P1P",
+  "project": "v1-noams",
+  "plate": 3,
+  "name": "White: tray + shelf (B)",
+  "minutes": 62,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.34,
+    "support": 0.44,
+    "model": 19.52
+   }
+  }
+ },
+ {
+  "printer": "p1p",
+  "label": "P1P",
+  "project": "v1-noams",
+  "plate": 4,
+  "name": "Periwinkle: cover (B)",
+  "minutes": 77,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.34,
+    "support": 11.3,
+    "model": 14.02
+   }
+  }
+ },
+ {
+  "printer": "p2s",
+  "label": "P2S",
+  "project": "v1",
+  "plate": 1,
+  "name": "LED coupon (print first)",
+  "minutes": 11,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.03,
+    "model": 1.55
+   }
+  }
+ },
+ {
+  "printer": "p2s",
+  "label": "P2S",
+  "project": "v1",
+  "plate": 2,
+  "name": "V1 case A (screws)",
+  "minutes": 130,
+  "changes": 2,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.03,
+    "support": 0.44,
+    "model": 19.91,
+    "purge": 0.44
+   },
+   "filament_2": {
+    "model": 14.29,
+    "support": 11.8,
+    "purge": 0.25
+   }
+  }
+ },
+ {
+  "printer": "p2s",
+  "label": "P2S",
+  "project": "v1",
+  "plate": 3,
+  "name": "V1 case B (snap-fit)",
+  "minutes": 135,
+  "changes": 2,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.03,
+    "support": 0.44,
+    "model": 20.12,
+    "purge": 0.43
+   },
+   "filament_2": {
+    "model": 14.45,
+    "support": 11.64,
+    "purge": 0.24
+   }
+  }
+ },
+ {
+  "printer": "p2s",
+  "label": "P2S",
+  "project": "v5",
+  "plate": 1,
+  "name": "LED coupon (print first)",
+  "minutes": 11,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.03,
+    "model": 1.55
+   }
+  }
+ },
+ {
+  "printer": "p2s",
+  "label": "P2S",
+  "project": "v5",
+  "plate": 2,
+  "name": "V5 case A (screws)",
+  "minutes": 199,
+  "changes": 54,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.03,
+    "support": 0.32,
+    "model": 19.46,
+    "purge": 12.55
+   },
+   "filament_2": {
+    "model": 14.74,
+    "support": 11.92,
+    "purge": 6.62
+   }
+  }
+ },
+ {
+  "printer": "p2s",
+  "label": "P2S",
+  "project": "v5",
+  "plate": 3,
+  "name": "V5 case B (snap-fit)",
+  "minutes": 203,
+  "changes": 54,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.03,
+    "support": 0.32,
+    "model": 19.67,
+    "purge": 12.55
+   },
+   "filament_2": {
+    "model": 14.9,
+    "support": 11.76,
+    "purge": 6.62
+   }
+  }
+ },
+ {
+  "printer": "p2s",
+  "label": "P2S",
+  "project": "v5-batch",
+  "plate": 1,
+  "name": "V5 5 trays + 5 shelves (A)",
+  "minutes": 352,
+  "changes": 52,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.03,
+    "purge": 14.63,
+    "model": 97.31,
+    "support": 1.72
+   },
+   "filament_2": {
+    "purge": 7.56,
+    "support": 0.53,
+    "model": 2.28
+   }
+  }
+ },
+ {
+  "printer": "p2s",
+  "label": "P2S",
+  "project": "v5-batch",
+  "plate": 2,
+  "name": "V5 5 covers (A)",
+  "minutes": 353,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.03,
+    "support": 59.02,
+    "model": 71.19
+   }
+  }
+ },
+ {
+  "printer": "p2s",
+  "label": "P2S",
+  "project": "v1-noams",
+  "plate": 1,
+  "name": "White: tray + shelf (A)",
+  "minutes": 59,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.03,
+    "support": 0.45,
+    "model": 19.91
+   }
+  }
+ },
+ {
+  "printer": "p2s",
+  "label": "P2S",
+  "project": "v1-noams",
+  "plate": 2,
+  "name": "Periwinkle: cover (A)",
+  "minutes": 76,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.03,
+    "support": 11.8,
+    "model": 14.28
+   }
+  }
+ },
+ {
+  "printer": "p2s",
+  "label": "P2S",
+  "project": "v1-noams",
+  "plate": 3,
+  "name": "White: tray + shelf (B)",
+  "minutes": 62,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.03,
+    "support": 0.45,
+    "model": 20.12
+   }
+  }
+ },
+ {
+  "printer": "p2s",
+  "label": "P2S",
+  "project": "v1-noams",
+  "plate": 4,
+  "name": "Periwinkle: cover (B)",
+  "minutes": 77,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.03,
+    "support": 11.64,
+    "model": 14.45
+   }
+  }
+ },
+ {
+  "printer": "a1",
+  "label": "A1",
+  "project": "v1",
+  "plate": 1,
+  "name": "LED coupon (print first)",
+  "minutes": 12,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.4,
+    "model": 1.5
+   }
+  }
+ },
+ {
+  "printer": "a1",
+  "label": "A1",
+  "project": "v1",
+  "plate": 2,
+  "name": "V1 case A (screws)",
+  "minutes": 132,
+  "changes": 2,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.03,
+    "model": 13.93,
+    "purge": 0.1,
+    "support": 11.45
+   },
+   "filament_1": {
+    "other": 0.37,
+    "support": 0.44,
+    "model": 19.38,
+    "purge": 0.32
+   }
+  }
+ },
+ {
+  "printer": "a1",
+  "label": "A1",
+  "project": "v1",
+  "plate": 3,
+  "name": "V1 case B (snap-fit)",
+  "minutes": 136,
+  "changes": 2,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.03,
+    "model": 14.08,
+    "purge": 0.1,
+    "support": 11.3
+   },
+   "filament_1": {
+    "other": 0.37,
+    "support": 0.44,
+    "model": 19.59,
+    "purge": 0.32
+   }
+  }
+ },
+ {
+  "printer": "a1",
+  "label": "A1",
+  "project": "v5",
+  "plate": 1,
+  "name": "LED coupon (print first)",
+  "minutes": 12,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.4,
+    "model": 1.5
+   }
+  }
+ },
+ {
+  "printer": "a1",
+  "label": "A1",
+  "project": "v5",
+  "plate": 2,
+  "name": "V5 case A (screws)",
+  "minutes": 204,
+  "changes": 54,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.03,
+    "model": 16.08,
+    "purge": 2.78,
+    "support": 11.57
+   },
+   "filament_1": {
+    "other": 0.37,
+    "support": 0.33,
+    "model": 20.66,
+    "purge": 8.74
+   }
+  }
+ },
+ {
+  "printer": "a1",
+  "label": "A1",
+  "project": "v5",
+  "plate": 3,
+  "name": "V5 case B (snap-fit)",
+  "minutes": 208,
+  "changes": 54,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.03,
+    "model": 16.24,
+    "purge": 2.78,
+    "support": 11.41
+   },
+   "filament_1": {
+    "other": 0.37,
+    "support": 0.33,
+    "model": 20.86,
+    "purge": 8.74
+   }
+  }
+ },
+ {
+  "printer": "a1",
+  "label": "A1",
+  "project": "v5-batch",
+  "plate": 1,
+  "name": "V5 5 trays + 5 shelves (A)",
+  "minutes": 363,
+  "changes": 52,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.03,
+    "purge": 7.07,
+    "support": 0.52,
+    "model": 2.15
+   },
+   "filament_1": {
+    "other": 0.37,
+    "purge": 12.88,
+    "model": 94.42,
+    "support": 1.67
+   }
+  }
+ },
+ {
+  "printer": "a1",
+  "label": "A1",
+  "project": "v5-batch",
+  "plate": 2,
+  "name": "V5 5 covers (A)",
+  "minutes": 360,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.4,
+    "support": 57.27,
+    "model": 69.08
+   }
+  }
+ },
+ {
+  "printer": "a1",
+  "label": "A1",
+  "project": "v1-noams",
+  "plate": 1,
+  "name": "White: tray + shelf (A)",
+  "minutes": 60,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.4,
+    "support": 0.44,
+    "model": 19.32
+   }
+  }
+ },
+ {
+  "printer": "a1",
+  "label": "A1",
+  "project": "v1-noams",
+  "plate": 2,
+  "name": "Periwinkle: cover (A)",
+  "minutes": 77,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.4,
+    "support": 11.45,
+    "model": 13.86
+   }
+  }
+ },
+ {
+  "printer": "a1",
+  "label": "A1",
+  "project": "v1-noams",
+  "plate": 3,
+  "name": "White: tray + shelf (B)",
+  "minutes": 63,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.4,
+    "support": 0.44,
+    "model": 19.52
+   }
+  }
+ },
+ {
+  "printer": "a1",
+  "label": "A1",
+  "project": "v1-noams",
+  "plate": 4,
+  "name": "Periwinkle: cover (B)",
+  "minutes": 77,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.4,
+    "support": 11.32,
+    "model": 14.02
+   }
+  }
+ },
+ {
+  "printer": "a1m",
+  "label": "A1 mini",
+  "project": "v1",
+  "plate": 1,
+  "name": "LED coupon (print first)",
+  "minutes": 11,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.38,
+    "model": 1.5
+   }
+  }
+ },
+ {
+  "printer": "a1m",
+  "label": "A1 mini",
+  "project": "v1",
+  "plate": 2,
+  "name": "V1 case A (screws): tray + shelf",
+  "minutes": 60,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.38,
+    "support": 0.44,
+    "model": 19.32
+   }
+  }
+ },
+ {
+  "printer": "a1m",
+  "label": "A1 mini",
+  "project": "v1",
+  "plate": 3,
+  "name": "V1 case A (screws): cover",
+  "minutes": 79,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.38,
+    "support": 11.45,
+    "model": 13.86
+   }
+  }
+ },
+ {
+  "printer": "a1m",
+  "label": "A1 mini",
+  "project": "v1",
+  "plate": 4,
+  "name": "V1 case B (snap-fit): tray + shelf",
+  "minutes": 64,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.38,
+    "support": 0.44,
+    "model": 19.52
+   }
+  }
+ },
+ {
+  "printer": "a1m",
+  "label": "A1 mini",
+  "project": "v1",
+  "plate": 5,
+  "name": "V1 case B (snap-fit): cover",
+  "minutes": 80,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.38,
+    "support": 11.3,
+    "model": 14.02
+   }
+  }
+ },
+ {
+  "printer": "a1m",
+  "label": "A1 mini",
+  "project": "v5",
+  "plate": 1,
+  "name": "LED coupon (print first)",
+  "minutes": 11,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.38,
+    "model": 1.5
+   }
+  }
+ },
+ {
+  "printer": "a1m",
+  "label": "A1 mini",
+  "project": "v5",
+  "plate": 2,
+  "name": "V5 case A (screws): tray + shelf",
+  "minutes": 142,
+  "changes": 52,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.38,
+    "support": 0.33,
+    "model": 20.51,
+    "purge": 8.41
+   },
+   "filament_2": {
+    "model": 2.07,
+    "purge": 2.68,
+    "support": 0.11
+   }
+  }
+ },
+ {
+  "printer": "a1m",
+  "label": "A1 mini",
+  "project": "v5",
+  "plate": 3,
+  "name": "V5 case A (screws): cover",
+  "minutes": 79,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.38,
+    "support": 11.45,
+    "model": 13.86
+   }
+  }
+ },
+ {
+  "printer": "a1m",
+  "label": "A1 mini",
+  "project": "v5",
+  "plate": 4,
+  "name": "V5 case B (snap-fit): tray + shelf",
+  "minutes": 145,
+  "changes": 52,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.38,
+    "support": 0.33,
+    "model": 20.71,
+    "purge": 8.41
+   },
+   "filament_2": {
+    "model": 2.07,
+    "purge": 2.68,
+    "support": 0.11
+   }
+  }
+ },
+ {
+  "printer": "a1m",
+  "label": "A1 mini",
+  "project": "v5",
+  "plate": 5,
+  "name": "V5 case B (snap-fit): cover",
+  "minutes": 80,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.38,
+    "support": 11.3,
+    "model": 14.02
+   }
+  }
+ },
+ {
+  "printer": "a1m",
+  "label": "A1 mini",
+  "project": "v5-batch",
+  "plate": 1,
+  "name": "V5 3 trays + 3 shelves (A)",
+  "minutes": 269,
+  "changes": 52,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.38,
+    "purge": 12.98,
+    "model": 56.65,
+    "support": 1.0
+   },
+   "filament_2": {
+    "purge": 6.98,
+    "support": 0.31,
+    "model": 1.26
+   }
+  }
+ },
+ {
+  "printer": "a1m",
+  "label": "A1 mini",
+  "project": "v5-batch",
+  "plate": 2,
+  "name": "V5 3 covers (A)",
+  "minutes": 227,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.38,
+    "support": 34.36,
+    "model": 41.45
+   }
+  }
+ },
+ {
+  "printer": "a1m",
+  "label": "A1 mini",
+  "project": "v1-noams",
+  "plate": 1,
+  "name": "White: tray + shelf (A)",
+  "minutes": 60,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.38,
+    "support": 0.44,
+    "model": 19.32
+   }
+  }
+ },
+ {
+  "printer": "a1m",
+  "label": "A1 mini",
+  "project": "v1-noams",
+  "plate": 2,
+  "name": "Periwinkle: cover (A)",
+  "minutes": 79,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.38,
+    "support": 11.45,
+    "model": 13.86
+   }
+  }
+ },
+ {
+  "printer": "a1m",
+  "label": "A1 mini",
+  "project": "v1-noams",
+  "plate": 3,
+  "name": "White: tray + shelf (B)",
+  "minutes": 64,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.38,
+    "support": 0.44,
+    "model": 19.52
+   }
+  }
+ },
+ {
+  "printer": "a1m",
+  "label": "A1 mini",
+  "project": "v1-noams",
+  "plate": 4,
+  "name": "Periwinkle: cover (B)",
+  "minutes": 80,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.38,
+    "support": 11.3,
+    "model": 14.02
+   }
+  }
+ },
+ {
+  "printer": "h2d",
+  "label": "H2D",
+  "project": "v1",
+  "plate": 1,
+  "name": "LED coupon (print first)",
+  "minutes": 10,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.19,
+    "model": 1.51
+   }
+  }
+ },
+ {
+  "printer": "h2d",
+  "label": "H2D",
+  "project": "v1",
+  "plate": 2,
+  "name": "V1 case A (screws)",
+  "minutes": 129,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.19,
+    "support": 0.44,
+    "model": 19.32
+   },
+   "filament_2": {
+    "model": 13.85,
+    "support": 11.45
+   }
+  }
+ },
+ {
+  "printer": "h2d",
+  "label": "H2D",
+  "project": "v1",
+  "plate": 3,
+  "name": "V1 case B (snap-fit)",
+  "minutes": 133,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.19,
+    "support": 0.44,
+    "model": 19.52
+   },
+   "filament_2": {
+    "model": 14.01,
+    "support": 11.3
+   }
+  }
+ },
+ {
+  "printer": "h2d",
+  "label": "H2D",
+  "project": "v5",
+  "plate": 1,
+  "name": "LED coupon (print first)",
+  "minutes": 10,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.19,
+    "model": 1.51
+   }
+  }
+ },
+ {
+  "printer": "h2d",
+  "label": "H2D",
+  "project": "v5",
+  "plate": 2,
+  "name": "V5 case A (screws)",
+  "minutes": 137,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.19,
+    "support": 0.33,
+    "model": 18.88
+   },
+   "filament_2": {
+    "model": 14.3,
+    "support": 11.57
+   }
+  }
+ },
+ {
+  "printer": "h2d",
+  "label": "H2D",
+  "project": "v5",
+  "plate": 3,
+  "name": "V5 case B (snap-fit)",
+  "minutes": 140,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.19,
+    "support": 0.33,
+    "model": 19.09
+   },
+   "filament_2": {
+    "model": 14.45,
+    "support": 11.41
+   }
+  }
+ },
+ {
+  "printer": "h2d",
+  "label": "H2D",
+  "project": "v5-batch",
+  "plate": 1,
+  "name": "V5 5 trays + 5 shelves (A)",
+  "minutes": 297,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.19,
+    "purge": 2.65,
+    "model": 94.42,
+    "support": 1.73
+   },
+   "filament_2": {
+    "purge": 1.48,
+    "model": 2.21,
+    "support": 0.45
+   }
+  }
+ },
+ {
+  "printer": "h2d",
+  "label": "H2D",
+  "project": "v5-batch",
+  "plate": 2,
+  "name": "V5 5 covers (A)",
+  "minutes": 355,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.19,
+    "support": 57.27,
+    "model": 69.08
+   }
+  }
+ },
+ {
+  "printer": "h2d",
+  "label": "H2D",
+  "project": "v1-noams",
+  "plate": 1,
+  "name": "White: tray + shelf (A)",
+  "minutes": 59,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.19,
+    "support": 0.44,
+    "model": 19.32
+   }
+  }
+ },
+ {
+  "printer": "h2d",
+  "label": "H2D",
+  "project": "v1-noams",
+  "plate": 2,
+  "name": "Periwinkle: cover (A)",
+  "minutes": 75,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.19,
+    "support": 11.45,
+    "model": 13.86
+   }
+  }
+ },
+ {
+  "printer": "h2d",
+  "label": "H2D",
+  "project": "v1-noams",
+  "plate": 3,
+  "name": "White: tray + shelf (B)",
+  "minutes": 62,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.19,
+    "support": 0.44,
+    "model": 19.52
+   }
+  }
+ },
+ {
+  "printer": "h2d",
+  "label": "H2D",
+  "project": "v1-noams",
+  "plate": 4,
+  "name": "Periwinkle: cover (B)",
+  "minutes": 76,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.19,
+    "support": 11.3,
+    "model": 14.02
+   }
+  }
+ },
+ {
+  "printer": "h2s",
+  "label": "H2S",
+  "project": "v1",
+  "plate": 1,
+  "name": "LED coupon (print first)",
+  "minutes": 10,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.22,
+    "model": 1.51
+   }
+  }
+ },
+ {
+  "printer": "h2s",
+  "label": "H2S",
+  "project": "v1",
+  "plate": 2,
+  "name": "V1 case A (screws)",
+  "minutes": 129,
+  "changes": 2,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.22,
+    "support": 0.42,
+    "model": 19.32,
+    "purge": 0.37
+   },
+   "filament_2": {
+    "model": 13.86,
+    "support": 11.45,
+    "purge": 0.3
+   }
+  }
+ },
+ {
+  "printer": "h2s",
+  "label": "H2S",
+  "project": "v1",
+  "plate": 3,
+  "name": "V1 case B (snap-fit)",
+  "minutes": 133,
+  "changes": 2,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.22,
+    "support": 0.42,
+    "model": 19.52,
+    "purge": 0.37
+   },
+   "filament_2": {
+    "model": 14.02,
+    "support": 11.3,
+    "purge": 0.29
+   }
+  }
+ },
+ {
+  "printer": "h2s",
+  "label": "H2S",
+  "project": "v5",
+  "plate": 1,
+  "name": "LED coupon (print first)",
+  "minutes": 10,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.22,
+    "model": 1.51
+   }
+  }
+ },
+ {
+  "printer": "h2s",
+  "label": "H2S",
+  "project": "v5",
+  "plate": 2,
+  "name": "V5 case A (screws)",
+  "minutes": 197,
+  "changes": 54,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.22,
+    "support": 0.31,
+    "model": 18.88,
+    "purge": 13.73
+   },
+   "filament_2": {
+    "model": 14.3,
+    "support": 11.56,
+    "purge": 7.92
+   }
+  }
+ },
+ {
+  "printer": "h2s",
+  "label": "H2S",
+  "project": "v5",
+  "plate": 3,
+  "name": "V5 case B (snap-fit)",
+  "minutes": 201,
+  "changes": 54,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.22,
+    "support": 0.31,
+    "model": 19.09,
+    "purge": 13.72
+   },
+   "filament_2": {
+    "model": 14.46,
+    "support": 11.41,
+    "purge": 7.91
+   }
+  }
+ },
+ {
+  "printer": "h2s",
+  "label": "H2S",
+  "project": "v5-batch",
+  "plate": 1,
+  "name": "V5 5 trays + 5 shelves (A)",
+  "minutes": 349,
+  "changes": 52,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.22,
+    "purge": 14.93,
+    "support": 1.67,
+    "model": 94.42
+   },
+   "filament_2": {
+    "purge": 8.25,
+    "support": 0.52,
+    "model": 2.21
+   }
+  }
+ },
+ {
+  "printer": "h2s",
+  "label": "H2S",
+  "project": "v5-batch",
+  "plate": 2,
+  "name": "V5 5 covers (A)",
+  "minutes": 352,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.22,
+    "support": 57.27,
+    "model": 69.08
+   }
+  }
+ },
+ {
+  "printer": "h2s",
+  "label": "H2S",
+  "project": "v1-noams",
+  "plate": 1,
+  "name": "White: tray + shelf (A)",
+  "minutes": 57,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.22,
+    "support": 0.44,
+    "model": 19.32
+   }
+  }
+ },
+ {
+  "printer": "h2s",
+  "label": "H2S",
+  "project": "v1-noams",
+  "plate": 2,
+  "name": "Periwinkle: cover (A)",
+  "minutes": 74,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.22,
+    "support": 11.46,
+    "model": 13.86
+   }
+  }
+ },
+ {
+  "printer": "h2s",
+  "label": "H2S",
+  "project": "v1-noams",
+  "plate": 3,
+  "name": "White: tray + shelf (B)",
+  "minutes": 60,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_1": {
+    "other": 0.22,
+    "support": 0.44,
+    "model": 19.52
+   }
+  }
+ },
+ {
+  "printer": "h2s",
+  "label": "H2S",
+  "project": "v1-noams",
+  "plate": 4,
+  "name": "Periwinkle: cover (B)",
+  "minutes": 75,
+  "changes": 0,
+  "warning": "",
+  "return_code": 0,
+  "grams": {
+   "filament_2": {
+    "other": 0.22,
+    "support": 11.32,
+    "model": 14.02
+   }
+  }
+ }
+]

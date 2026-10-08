@@ -1,0 +1,32 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Raily Keyring</title><style>
+@font-face { font-family: 'Inter Guide'; src: url('fonts/Inter-400.woff2') format('woff2'); font-weight: 400; }
+@page { size: A4; margin: 0; }
+* { box-sizing: border-box; }
+body { margin: 0; background: #e5e5ea; font-family: 'Inter Guide', -apple-system, sans-serif; color: #1d1d1f; -webkit-font-smoothing: antialiased; }
+.page { width: 210mm; height: 297mm; margin: 10mm auto; background: #fff; position: relative; padding: 24mm 22mm 20mm; display: flex; flex-direction: column; overflow: hidden; break-after: page; }
+@media print { body { background: none; } .page { margin: 0; } }
+h1 { font-weight: 400; font-size: 34pt; letter-spacing: -0.035em; margin: 0; }
+h2 { font-weight: 400; font-size: 22pt; letter-spacing: -0.03em; margin: 0 0 12mm; }
+.cover { align-items: center; justify-content: center; text-align: center; padding-bottom: 36mm; }
+.cover img.art { width: 150mm; height: 150mm; object-fit: contain; margin-bottom: 8mm; }
+.cover p { font-size: 12pt; color: #6e6e73; margin: 4mm 0 0; }
+.mark { position: absolute; bottom: 20mm; left: 0; right: 0; text-align: center; } .mark img { height: 6mm; }
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8mm 6mm; }
+.item { display: grid; gap: 2mm; justify-items: center; }
+.item img, .item .svgbox { width: 50mm; height: 33mm; object-fit: contain; display: grid; place-items: center; }
+.item .svgbox svg { width: 24mm; height: auto; }
+.item span { font-size: 9.5pt; }
+.inset { position: absolute; right: 0; bottom: 0; width: 38mm; height: 38mm; border-radius: 50%; overflow: hidden; background: #fff; box-shadow: 0 0 0 0.3mm #86868b; }
+.inset img { width: 100%; height: 100%; object-fit: cover; transform: scale(1.35); }
+.step { position: relative; margin-bottom: 9mm; }
+.step .art { position: relative; width: 138mm; height: 92mm; margin: 0 auto; }
+.step .art > img { width: 100%; height: 100%; object-fit: contain; }
+.step .art img { width: 100%; display: block; }
+.step .art svg.ov { position: absolute; inset: 0; width: 100%; height: 100%; }
+.step p { font-size: 13pt; margin: 3mm 0 0; }
+.step .n { color: #86868b; font-size: 10pt; display: block; margin-bottom: 1mm; }
+.foot { position: absolute; bottom: 12mm; left: 22mm; right: 22mm; display: flex; justify-content: space-between; font-size: 8pt; color: #86868b; }
+</style></head><body>
+<section class="page cover"><img class="art" src="cover.jpg" alt="The finished Raily Keyring"><h1>Raily Keyring</h1><p>Build it, flash it, press it.</p><div class="mark"><img src="brand/raily-wordmark.svg" alt="Raily"></div></section>
+<section class="page"><h2>What's in the box</h2><div class="grid"><div class="item"><img src="xiao.jpg" alt=""><span>XIAO nRF52840</span></div><div class="item"><img src="headers.jpg" alt=""><span>Two 7-pin headers</span></div><div class="item"><img src="board-tile.svg" alt=""><span>Expansion Board</span></div><div class="item"><img src="motor.jpg" alt=""><span>Vibration motor</span></div><div class="item"><img src="cable.jpg" alt=""><span>Grove cable</span></div><div class="item"><img src="battery.jpg" alt=""><span>LiPo battery</span></div><div class="item"><img src="front.jpg" alt=""><span>Front cover</span></div><div class="item"><img src="rear.jpg" alt=""><span>Rear tray</span></div><div class="item"><img src="cap.jpg" alt=""><span>Button cap</span></div><div class="item"><img src="ring.jpg" alt=""><span>Split ring, 25 mm</span></div><div class="item"><img src="usb.jpg" alt=""><span>USB-C cable</span></div><div class="item"><img src="screws.jpg" alt=""><span>M2 screws and nuts</span></div></div><div class="foot"><span>Raily Keyring</span><span>2</span></div></section>
+</body></html>

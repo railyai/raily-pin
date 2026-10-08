@@ -2,9 +2,9 @@
 
 This folder mirrors the Raily Pin firmware from Raily's main repository.
 
-- firmware version: `0.2.20-qa`
-- source commit: `380ca200a69bc976cd431ca5600c5841258c3215` (the 0.2.20-qa release)
-- synced: 2026-10-01
+- firmware version: `0.3.0`
+- source commit: `af9a609249e552c04dce241898a360a2a9aafc62`
+- synced: 2026-10-08
 
 
 Build: `arduino-cli compile -b Seeeduino:nrf52:xiaonRF52840 firmware/RailyPinsP1`

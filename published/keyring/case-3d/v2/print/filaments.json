@@ -1,0 +1,234 @@
+{
+ "shipping": {
+  "v1": {
+   "spools": [
+    {
+     "key": "pm_cotton_white",
+     "name": "Polymaker Panchroma Matte Cotton White",
+     "sku": "CA04016",
+     "hex": "#F4EFEB",
+     "td": 4.1
+    },
+    {
+     "key": "pm_pastel_periwinkle",
+     "name": "Polymaker Panchroma Matte Pastel Periwinkle",
+     "sku": "CA04036",
+     "hex": "#ADB4E6",
+     "td": 1.5
+    }
+   ],
+   "bodies": {
+    "tray": "Polymaker Panchroma Matte Cotton White",
+    "button": "Polymaker Panchroma Matte Cotton White",
+    "loop": "Polymaker Panchroma Matte Cotton White",
+    "cover": "Polymaker Panchroma Matte Pastel Periwinkle",
+    "shelf": "Polymaker Panchroma Matte Cotton White",
+    "led": "Polymaker Panchroma Matte Pastel Periwinkle"
+   },
+   "grams_per_case": {
+    "Polymaker Panchroma Matte Cotton White": 19.1,
+    "Polymaker Panchroma Matte Pastel Periwinkle": 14.7
+   }
+  },
+  "v5": {
+   "spools": [
+    {
+     "key": "pm_cotton_white",
+     "name": "Polymaker Panchroma Matte Cotton White",
+     "sku": "CA04016",
+     "hex": "#F4EFEB",
+     "td": 4.1
+    },
+    {
+     "key": "pm_pastel_periwinkle",
+     "name": "Polymaker Panchroma Matte Pastel Periwinkle",
+     "sku": "CA04036",
+     "hex": "#ADB4E6",
+     "td": 1.5
+    }
+   ],
+   "bodies": {
+    "tray": "Polymaker Panchroma Matte Cotton White",
+    "button": "Polymaker Panchroma Matte Pastel Periwinkle",
+    "loop": "Polymaker Panchroma Matte Pastel Periwinkle",
+    "cover": "Polymaker Panchroma Matte Pastel Periwinkle",
+    "shelf": "Polymaker Panchroma Matte Cotton White",
+    "led": "Polymaker Panchroma Matte Pastel Periwinkle"
+   },
+   "grams_per_case": {
+    "Polymaker Panchroma Matte Cotton White": 18.5,
+    "Polymaker Panchroma Matte Pastel Periwinkle": 15.2
+   }
+  }
+ },
+ "archived": {
+  "v1_whiteled": {
+   "spools": [
+    {
+     "key": "pm_cotton_white",
+     "name": "Polymaker Panchroma Matte Cotton White",
+     "sku": "CA04016",
+     "hex": "#F4EFEB",
+     "td": 4.1
+    },
+    {
+     "key": "pm_pastel_periwinkle",
+     "name": "Polymaker Panchroma Matte Pastel Periwinkle",
+     "sku": "CA04036",
+     "hex": "#ADB4E6",
+     "td": 1.5
+    }
+   ],
+   "bodies": {
+    "tray": "Polymaker Panchroma Matte Cotton White",
+    "button": "Polymaker Panchroma Matte Cotton White",
+    "loop": "Polymaker Panchroma Matte Cotton White",
+    "cover": "Polymaker Panchroma Matte Pastel Periwinkle",
+    "shelf": "Polymaker Panchroma Matte Cotton White",
+    "led": "Polymaker Panchroma Matte Cotton White"
+   },
+   "grams_per_case": {
+    "Polymaker Panchroma Matte Cotton White": 19.1,
+    "Polymaker Panchroma Matte Pastel Periwinkle": 14.7
+   }
+  },
+  "v4": {
+   "spools": [
+    {
+     "key": "pm_charcoal_black",
+     "name": "Polymaker Panchroma Matte Charcoal Black",
+     "sku": "CA04015",
+     "hex": "#2F2E30",
+     "td": 0.1
+    },
+    {
+     "key": "pm_pastel_periwinkle",
+     "name": "Polymaker Panchroma Matte Pastel Periwinkle",
+     "sku": "CA04036",
+     "hex": "#ADB4E6",
+     "td": 1.5
+    }
+   ],
+   "bodies": {
+    "tray": "Polymaker Panchroma Matte Charcoal Black",
+    "button": "Polymaker Panchroma Matte Pastel Periwinkle",
+    "loop": "Polymaker Panchroma Matte Pastel Periwinkle",
+    "cover": "Polymaker Panchroma Matte Pastel Periwinkle",
+    "shelf": "Polymaker Panchroma Matte Charcoal Black",
+    "led": "Polymaker Panchroma Matte Pastel Periwinkle"
+   },
+   "grams_per_case": {
+    "Polymaker Panchroma Matte Charcoal Black": 18.5,
+    "Polymaker Panchroma Matte Pastel Periwinkle": 15.2
+   }
+  },
+  "v2": {
+   "spools": [
+    {
+     "key": "pm_charcoal_black",
+     "name": "Polymaker Panchroma Matte Charcoal Black",
+     "sku": "CA04015",
+     "hex": "#2F2E30",
+     "td": 0.1
+    },
+    {
+     "key": "pm_pastel_periwinkle",
+     "name": "Polymaker Panchroma Matte Pastel Periwinkle",
+     "sku": "CA04036",
+     "hex": "#ADB4E6",
+     "td": 1.5
+    }
+   ],
+   "bodies": {
+    "tray": "Polymaker Panchroma Matte Charcoal Black",
+    "button": "Polymaker Panchroma Matte Charcoal Black",
+    "loop": "Polymaker Panchroma Matte Charcoal Black",
+    "cover": "Polymaker Panchroma Matte Pastel Periwinkle",
+    "shelf": "Polymaker Panchroma Matte Charcoal Black",
+    "led": "Polymaker Panchroma Matte Pastel Periwinkle"
+   },
+   "grams_per_case": {
+    "Polymaker Panchroma Matte Charcoal Black": 19.1,
+    "Polymaker Panchroma Matte Pastel Periwinkle": 14.7
+   }
+  },
+  "v3": {
+   "spools": [
+    {
+     "key": "pm_army_blue",
+     "name": "Polymaker Panchroma Matte Army Blue",
+     "sku": "CA04008",
+     "hex": "#2E4462",
+     "td": 0.1
+    },
+    {
+     "key": "pm_raspberry_blue",
+     "name": "Polymaker Panchroma Matte Raspberry Blue",
+     "sku": "CA04092",
+     "hex": "#5472D0",
+     "td": null
+    },
+    {
+     "key": "pm_pastel_periwinkle",
+     "name": "Polymaker Panchroma Matte Pastel Periwinkle",
+     "sku": "CA04036",
+     "hex": "#ADB4E6",
+     "td": 1.5
+    }
+   ],
+   "bodies": {
+    "tray": "Polymaker Panchroma Matte Army Blue",
+    "button": "Polymaker Panchroma Matte Army Blue",
+    "loop": "Polymaker Panchroma Matte Army Blue",
+    "cover": "Polymaker Panchroma Matte Raspberry Blue",
+    "shelf": "Polymaker Panchroma Matte Army Blue",
+    "led": "Polymaker Panchroma Matte Pastel Periwinkle"
+   },
+   "grams_per_case": {
+    "Polymaker Panchroma Matte Army Blue": 19.1,
+    "Polymaker Panchroma Matte Raspberry Blue": 14.7,
+    "Polymaker Panchroma Matte Pastel Periwinkle": 0.0
+   }
+  },
+  "v3_gallery": {
+   "spools": [
+    {
+     "key": "pm_army_blue",
+     "name": "Polymaker Panchroma Matte Army Blue",
+     "sku": "CA04008",
+     "hex": "#2E4462",
+     "td": 0.1
+    },
+    {
+     "key": "pm_raspberry_blue",
+     "name": "Polymaker Panchroma Matte Raspberry Blue",
+     "sku": "CA04092",
+     "hex": "#5472D0",
+     "td": null
+    },
+    {
+     "key": "pm_pastel_periwinkle",
+     "name": "Polymaker Panchroma Matte Pastel Periwinkle",
+     "sku": "CA04036",
+     "hex": "#ADB4E6",
+     "td": 1.5
+    }
+   ],
+   "bodies": {
+    "tray": "Polymaker Panchroma Matte Army Blue",
+    "button": "Polymaker Panchroma Matte Army Blue",
+    "loop": "Polymaker Panchroma Matte Army Blue",
+    "cover": "Polymaker Panchroma Matte Raspberry Blue",
+    "shelf": "Polymaker Panchroma Matte Army Blue",
+    "led": "Polymaker Panchroma Matte Pastel Periwinkle"
+   },
+   "grams_per_case": {
+    "Polymaker Panchroma Matte Army Blue": 19.1,
+    "Polymaker Panchroma Matte Raspberry Blue": 14.7,
+    "Polymaker Panchroma Matte Pastel Periwinkle": 0.0
+   }
+  }
+ },
+ "density_g_cm3": 1.37,
+ "note": "grams are solid volume x density (100 % infill); the slicer and AMS purge add to this"
+}

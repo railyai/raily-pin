@@ -1,0 +1,302 @@
+{
+ "version": "v1",
+ "params": {
+  "window": "none",
+  "window_inset": 0.2,
+  "window_r": 0.8,
+  "window_gap": 0.5,
+  "window_bezel": 1.2,
+  "window_chamfer": 0.3,
+  "window_ledge": 0.4,
+  "window_wall": 1.0,
+  "window_deg": [
+   0.0,
+   12.0,
+   15.0,
+   15.0
+  ],
+  "window_kink_y": 7.6,
+  "window_kink_deg": 30.0,
+  "window_top_chamfer": 0.8,
+  "window_field": 1.5,
+  "window_field_h": 0.6,
+  "window_lip": [
+   1.0,
+   0.6
+  ]
+ },
+ "size": {
+  "width": 50.37,
+  "length": 89.46,
+  "rim": 20.3,
+  "crown": 24.04,
+  "with_loop": 97.76,
+  "box": [
+   117.76,
+   207.222,
+   -7.15,
+   13.15,
+   -23.37,
+   27.0
+  ]
+ },
+ "window": null,
+ "closure": "back",
+ "check": {
+  "expansion": [
+   0.001,
+   0.0
+  ],
+  "headers": [
+   2.125,
+   0.0
+  ],
+  "xiao": [
+   0.3,
+   0.0
+  ],
+  "lipo": [
+   0.0,
+   0.0
+  ],
+  "motor": [
+   0.0,
+   0.0
+  ],
+  "usb_plug": [
+   0.05,
+   0.0
+  ],
+  "cable_zone": [
+   0.3,
+   0.0
+  ],
+  "cable_zone_board": 0.0,
+  "cover_tray_overlap": 0.0,
+  "cover_button_overlap": 0.0,
+  "tray_button_overlap": 0.0
+ },
+ "check_closure_b": {
+  "expansion": [
+   0.001,
+   0.0
+  ],
+  "headers": [
+   2.125,
+   0.0
+  ],
+  "xiao": [
+   0.3,
+   0.0
+  ],
+  "lipo": [
+   0.0,
+   0.0
+  ],
+  "motor": [
+   0.0,
+   0.0
+  ],
+  "usb_plug": [
+   0.05,
+   0.0
+  ],
+  "cable_zone": [
+   0.3,
+   0.0
+  ],
+  "cable_zone_board": 0.0,
+  "cover_tray_overlap": 0.0,
+  "cover_button_overlap": 0.0,
+  "tray_button_overlap": 0.0
+ },
+ "snap": {
+  "L": 14.0,
+  "t": 2.0,
+  "w": 6.3500000000000005,
+  "e": 0.6,
+  "E": 1997.0,
+  "strain_pct": 0.9183673469387754,
+  "deflect_N": 5.545604956268221,
+  "push_on_N_each": 6.445095395569324,
+  "pull_off_N_each": 11.517794909172457,
+  "push_on_N": 25.780381582277297,
+  "pull_off_N": 46.07117963668983,
+  "pull_off_N_mu_0_25": 36.97069970845481,
+  "pull_off_N_mu_0_45": 58.48092499337396,
+  "latches": 4,
+  "elong_break_pct": 7.23
+ },
+ "tab": {
+  "L": 13.5,
+  "I": 0.8138020833333334,
+  "E": 1997.0,
+  "k": 1.9816037316465986,
+  "gap": 0.15,
+  "protrusion": 1.0,
+  "typ_travel": 0.25,
+  "stroke": 0.4,
+  "flex_force": 0.7926414926586395,
+  "strain_stroke": 0.411522633744856,
+  "max_defl": 1.15,
+  "strain_max": 1.183127572016461,
+  "elong_break": 7.23,
+  "nub_len": 2.59,
+  "wall": 1.6,
+  "tab_t": 1.25,
+  "slit": 0.7,
+  "tab_len": 16.0,
+  "roof_deg": 45.0,
+  "end_chamfer": 2.0
+ },
+ "fit": {
+  "usb": {
+   "y_low": 0.795,
+   "y_high": 0.3,
+   "y_low_at_min_lift": 0.295,
+   "cover_over_at_max_lift": 0.3,
+   "z_low": 0.43,
+   "z_high": 0.43
+  },
+  "switch": {
+   "x_on": 0.4,
+   "x_off": 0.4,
+   "y_low": 0.7,
+   "y_high": 0.7
+  },
+  "d1": {
+   "nub_covers_y_low": 1.775,
+   "nub_covers_y_high": 1.775,
+   "nub_on_actuator_x": 0.175,
+   "rest_gap": 0.15
+  },
+  "led": {
+   "die_inside_spot": 0.793
+  },
+  "tab_wall": {
+   "below": 2.115,
+   "above": 8.045
+  },
+  "ok": true,
+  "worst": 0.15
+ },
+ "floor": {
+  "floor": 1.4,
+  "force_N": 20.0,
+  "bay_b": 23.7,
+  "width_a": 47.2,
+  "q_MPa": 0.0179,
+  "w_simply_supported": 0.11,
+  "w_clamped": 0.028,
+  "stress_MPa": 3.1,
+  "swell_gap": 0.3
+ },
+ "floor_v1": {
+  "floor": 1.4,
+  "force_N": 20.0,
+  "bay_b": 23.7,
+  "width_a": 47.2,
+  "q_MPa": 0.0179,
+  "w_simply_supported": 0.11,
+  "w_clamped": 0.028,
+  "stress_MPa": 3.1,
+  "swell_gap": 0.3
+ },
+ "cable": {
+  "zone": [
+   22.5,
+   6.5,
+   10.6
+  ],
+  "excess": 136.0,
+  "stacks": 2,
+  "fold": 20.47,
+  "layers": 4,
+  "stack_h": 4.4,
+  "fits": true
+ },
+ "usb_depth": 0.20000000000000284,
+ "usb": {
+  "window": [
+   9.8,
+   4.305
+  ],
+  "r": 1.6,
+  "chamfer": 0.25,
+  "centre_yz": [
+   9.998,
+   0.89
+  ],
+  "clearance_z": 0.43,
+  "clearance_y": 0.548,
+  "mouth_depth": 0.2,
+  "outer_face_x": 117.76,
+  "plug_shell_in_receptacle": 6.45,
+  "receptacle_depth": 7.3,
+  "tray_over_window": 0.0,
+  "tray_over_window_at_face": -0.25,
+  "end_wall": 1.25
+ },
+ "facets": {
+  "xc": 162.491,
+  "zc": 1.815,
+  "a": 19.347,
+  "b": 10.275,
+  "k": 1.114,
+  "tmax": 3.221,
+  "top": 16.889,
+  "crown": 3.739,
+  "crown_full": 3.739,
+  "capped": false,
+  "arm_deg": 7.0,
+  "corner_deg": 12.237,
+  "max_slope_deg": 12.237
+ },
+ "fastening": {
+  "closure": "back",
+  "seat": -7.150000000000002,
+  "tip": 8.849999999999998,
+  "nut": [
+   6.749999999999998,
+   8.349999999999998
+  ],
+  "holes": [
+   [
+    123.49,
+    18.36
+   ],
+   [
+    173.49,
+    18.36
+   ],
+   [
+    123.49,
+    -16.64
+   ],
+   [
+    173.49,
+    -16.64
+   ]
+  ]
+ },
+ "switch_slot": {
+  "x": [
+   132.86,
+   136.56
+  ],
+  "y": [
+   -0.1100000000000001,
+   2.42
+  ]
+ },
+ "led": {
+  "x": 122.27,
+  "z": -4.82,
+  "mode": "skin",
+  "skin": 0.3,
+  "d": 3.0,
+  "hole": 2.0,
+  "zone": 3,
+  "top_y": 8.940000000000001
+ }
+}

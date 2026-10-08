@@ -1,0 +1,8 @@
+build/
+# generated output; the published copies are in ../published/keyring (see README.md)
+print/
+preview/
+guide-figures/
+colourways/
+.venv/
+__pycache__/

@@ -1,0 +1,74 @@
+{
+ "reference": {
+  "width": 50.370000000000005,
+  "thickness_rim": 20.300000000000004
+ },
+ "A": {
+  "screws": "4 x ISO 7046-1 M2 x 16 countersunk, cross recess H0 (dk 3.8, k 1.2)",
+  "nuts": "4 x ISO 4032 M2 (s 4.0, m 1.6) in side slots of the cover pillars",
+  "nut_y": [
+   6.749999999999998,
+   8.349999999999998
+  ],
+  "tip_y": 8.849999999999998,
+  "front_plate_inner_y": 12.15,
+  "tip_to_front_plate": 3.3000000000000025,
+  "boss_d": 7.4,
+  "width": 50.370000000000005,
+  "thickness_rim": 20.300000000000004,
+  "cover_cm3": 13.97
+ },
+ "B": {
+  "mechanics": {
+   "L": 14.0,
+   "t": 2.0,
+   "w": 6.35,
+   "e": 0.6,
+   "E": 1997.0,
+   "strain_pct": 0.918,
+   "deflect_N": 5.546,
+   "push_on_N_each": 6.445,
+   "pull_off_N_each": 11.518,
+   "push_on_N": 25.78,
+   "pull_off_N": 46.071,
+   "pull_off_N_mu_0_25": 36.971,
+   "pull_off_N_mu_0_45": 58.481,
+   "latches": 4,
+   "elong_break_pct": 7.23
+  },
+  "cover_g": 19.1,
+  "pull_off_over_cover_weight": 246,
+  "width": 50.370000000000005,
+  "thickness_rim": 20.300000000000004,
+  "latches": [
+   {
+    "side": "+z",
+    "bump_x": 140.0,
+    "hinge_x": 154.0,
+    "free_x": 137.5
+   },
+   {
+    "side": "+z",
+    "bump_x": 178.0,
+    "hinge_x": 164.0,
+    "free_x": 180.5
+   },
+   {
+    "side": "-z",
+    "bump_x": 140.0,
+    "hinge_x": 154.0,
+    "free_x": 137.5
+   },
+   {
+    "side": "-z",
+    "bump_x": 178.0,
+    "hinge_x": 164.0,
+    "free_x": 180.5
+   }
+  ]
+ },
+ "C": {
+  "width": 53.17,
+  "wall": 3.0
+ }
+}

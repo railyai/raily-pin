@@ -18,15 +18,19 @@
 #include "screen_state.h"
 #include "mascot_record.h"
 #include "rhythm.h"
+#include "da7280.h"
 #include "bench_serial.h"
 #include "screen_bench.h"
 #include "bond_table.h"
 #include "press_hold.h"
+#include "idle_sleep.h"
+#include "battery_curve.h"
+#include "vdd_log.h"
 
 using namespace Adafruit_LittleFS_Namespace;
 
 static const char DEVICE_NAME[] = "Raily Device";
-static const char FW_VERSION[] = "0.2.20-qa";
+static const char FW_VERSION[] = "0.3.0";
 
 BLEService railyService("7B1E0001-6F3A-4C2E-9A10-0D5C8F2A9E01");
 BLECharacteristic deviceInfoChr("7B1E0002-6F3A-4C2E-9A10-0D5C8F2A9E01");
@@ -44,6 +48,26 @@ BLECharacteristic screenStateChr("7B1E0014-6F3A-4C2E-9A10-0D5C8F2A9E01");
 // BLE bonding stage 1 (docs/pins/ble-bonding.md): an encrypted read that
 // makes iOS pair, and tells the app whether its link is admitted.
 BLECharacteristic linkSecurityChr("7B1E0010-6F3A-4C2E-9A10-0D5C8F2A9E01");
+// Battery telemetry (docs/pins/battery-telemetry-design.md): the power state
+// (bit 0 USB present, bit 1 charging, bit 2 low, bit 3 critical) in the
+// Raily service, open read +
+// notify. The percent (standard Battery Service 0x180F / 0x2A19) only with
+// -DRAILY_BAT_ON_XIAO=1, a board whose cell is on the XIAO's own BAT pads:
+// on the Expansion Board kit the cell never reaches a XIAO pin, so P0.31
+// means nothing there, no percent is served and the charging bit is 0.
+#ifndef RAILY_BAT_ON_XIAO
+#define RAILY_BAT_ON_XIAO 0
+#endif
+// The VDD discharge bench (serial v/V/L, a log in InternalFS): bench builds
+// only (build_firmware.sh --bench). Its writes share the 28 KB volume with
+// the counter, the secret and the bonds, so a release never carries it.
+#ifndef RAILY_VDD_BENCH
+#define RAILY_VDD_BENCH 0
+#endif
+BLECharacteristic powerStateChr("7B1E0007-6F3A-4C2E-9A10-0D5C8F2A9E01");
+#if RAILY_BAT_ON_XIAO
+BLEBas blebas;
+#endif
 BLEDis bledis;
 // The Nordic legacy DFU service (BLEDfu) is gone on purpose: its control
 // point let any nearby radio jump the pin into the bootloader. DFU entry
@@ -87,10 +111,31 @@ static std::atomic<bool> pendingScreenFoundYou(false);
 // pattern, so a silent ack never cancels an important one.
 static std::atomic<uint8_t> pendingRhythmAck(0);
 
-// The vibration motor on Grove A0/D0 (D0 = P0.02; gestures-spec.md): a
-// digital level, the module has its own transistor. -DRAILY_MOTOR=0 leaves
-// the pin untouched; -DRAILY_MOTOR_ACTIVE_LOW=1 if the bench finds the
-// module active low (then the pin idles high).
+// Keyring Air sleep (idle_sleep.h, docs/pins/air-power-risks.md): loop()
+// blocks on its task notification when it has nothing to do, so every flag
+// another task raises for loop() also wakes it. Nothing in a P1 build.
+#if RAILY_IDLE_SLEEP
+static TaskHandle_t loopTask = NULL;  // set first thing in setup(), which runs on the loop task
+static void wakeLoop() {
+  if (loopTask) xTaskNotifyGive(loopTask);
+}
+static void wakeLoopFromISR() {
+  if (!loopTask) return;
+  BaseType_t woken = pdFALSE;
+  vTaskNotifyGiveFromISR(loopTask, &woken);
+  portYIELD_FROM_ISR(woken);
+}
+#define RAILY_WAKE_LOOP() wakeLoop()
+#else
+#define RAILY_WAKE_LOOP() ((void)0)
+#endif
+
+// The vibration motor (docs/pins/firmware.md «Vibration motor»): the
+// SparkFun DA7280 haptic driver on software I2C, D6/D7 (da7280.h), probed
+// at boot; when it does not answer, the old Grove module on A0/D0
+// (D0 = P0.02; gestures-spec.md), a digital level with its own transistor.
+// -DRAILY_MOTOR=0 leaves D0, D6 and D7 untouched; -DRAILY_MOTOR_ACTIVE_LOW=1
+// if the bench finds the Grove module active low (then D0 idles high).
 #ifndef RAILY_MOTOR
 #define RAILY_MOTOR 1
 #endif
@@ -99,6 +144,26 @@ static std::atomic<uint8_t> pendingRhythmAck(0);
 #endif
 #ifndef RAILY_MOTOR_ACTIVE_LOW
 #define RAILY_MOTOR_ACTIVE_LOW 0
+#endif
+// The DA7280's lines on the Expansion Board's Grove UART port: SDA = D6,
+// SCL = D7. Sources, all agreeing:
+// - Seeed Grove System wiki (wiki.seeedstudio.com/Grove_System): a Grove
+//   UART port is labelled from the base unit, pin 1 (yellow) = RX, pin 2
+//   (white) = TX; a Grove I2C port is pin 1 = SCL, pin 2 = SDA.
+// - The Seeed core's XIAO nRF52840 variant.h: PIN_SERIAL1_RX 7 (D7),
+//   PIN_SERIAL1_TX 6 (D6). So the UART port carries D7 on pin 1, D6 on pin 2.
+// - A Grove-to-Qwiic cable (Adafruit 4528) and the Grove-Qwiic hub keep
+//   pin 1 yellow = SCL, pin 2 white = SDA (Adafruit 4528: «Yellow for SCL»).
+// - hardware/raily-pin-public/case/motor-options.md: yellow = D7 = SCL,
+//   white = D6 = SDA.
+// Not checked against the Expansion Board schematic itself. The boot probe
+// also tries the swapped order once (da7280.h HapticMotor), and the boot
+// line says which order answered.
+#ifndef RAILY_HAPTIC_SDA_PIN
+#define RAILY_HAPTIC_SDA_PIN D6
+#endif
+#ifndef RAILY_HAPTIC_SCL_PIN
+#define RAILY_HAPTIC_SCL_PIN D7
 #endif
 
 // Serial `i` reports it: 0 on a bare XIAO, before the probe, or in the
@@ -388,6 +453,7 @@ static void emitButtonEvent(uint8_t pressType) {
     pendingFeedback.store(4, std::memory_order_relaxed);
     pendingScreenPressFailed.store(true, std::memory_order_relaxed);
     Serial.println("counter persist FAILED - press dropped");
+    RAILY_WAKE_LOOP();
     return;
   }
   const uint32_t now = millis();
@@ -427,6 +493,7 @@ static void emitButtonEvent(uint8_t pressType) {
     pendingScreenPressFailed.store(true, std::memory_order_relaxed);
   }
   if (emitMutex) xSemaphoreGive(emitMutex);
+  RAILY_WAKE_LOOP();
   Serial.print("press counter=");
   Serial.print(eventCounter);
   Serial.println(sent ? "" : route == PRESS_HOLD ? " held (link not ready)" : " not sent");
@@ -473,6 +540,55 @@ static void serviceHeldPress() {
   }
 }
 
+#if RAILY_BUTTON
+// The Air button on D1 (P0.03, active low, 10 k pull-up R3; the internal
+// pull-up too, so a board without the button never floats into presses).
+// The interrupt only stamps the edge and wakes loop(); loop() debounces
+// (idle_sleep.h) and emits a tap through emitButtonEvent, which writes
+// flash, so it never runs in the interrupt. Under 2 s it scans; 2 s or
+// more never does (idle_sleep.h).
+static const uint8_t BUTTON_PIN = D1;
+static ButtonEdgeRing buttonEdges = {};
+static ButtonDebounce buttonDebounce = {};  // loop task only
+
+static void onButtonEdge() {
+  const bool firstOfBurst = buttonEdges.empty();
+  buttonEdges.push(digitalRead(BUTTON_PIN) == LOW, (uint32_t)tick2ms(xTaskGetTickCountFromISR()));
+#if RAILY_IDLE_SLEEP
+  // One wake per burst of edges (contact bounce): loop() drains the ring,
+  // and the debounce deadline brings it back when the level has settled.
+  if (firstOfBurst) wakeLoopFromISR();
+#else
+  (void)firstOfBurst;
+#endif
+}
+
+static void startButton() {
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  attachInterrupt(BUTTON_PIN, onButtonEdge, CHANGE);
+}
+
+static void onButton(ButtonEvent event) {
+  if (buttonScans(event)) {
+    emitButtonEvent(0);  // press_type 0: the hardware button, as serial `p`
+  } else if (event == BUTTON_LONG) {
+    // No scan, no counter: «didn't work» on the screen and the red LED.
+    pendingFeedback.store(4, std::memory_order_relaxed);
+    pendingScreenPressFailed.store(true, std::memory_order_relaxed);
+    Serial.println("button: held 2 s or more, no scan");
+  }
+}
+
+// loop(): the interrupt's edges in the order they happened, then the pin
+// as it is now.
+static __attribute__((noinline)) void serviceButton() {
+  bool level = false;
+  uint32_t at = 0;
+  while (buttonEdges.pop(&level, &at)) onButton(buttonDebounce.sample(level, at));
+  onButton(buttonDebounce.sample(digitalRead(BUTTON_PIN) == LOW, millis()));
+}
+#endif
+
 // The pin was dropped: «Упал. Было больно» on the screen (keyring-oled PR 5,
 // ScreenState::onFall). gestures S1's gesture 3 detector (free fall, then
 // the impact, on the Sense IMU) calls it when the pin lands; until the IMU
@@ -481,6 +597,7 @@ static void serviceHeldPress() {
 // motor, no LED, no BLE (tests/check_fall_path.py).
 static void screenOnFall() {
   pendingScreenFall.store(true, std::memory_order_relaxed);
+  RAILY_WAKE_LOOP();
 }
 
 // One event_ack byte: the LED keeps today's normalisation (an empty or 0
@@ -493,6 +610,7 @@ static void publishEventAck(const uint8_t* data, uint16_t len) {
   if (rhythmForEventAck(bytes.rhythm) != RHYTHM_NONE) {
     pendingRhythmAck.store(bytes.rhythm, std::memory_order_relaxed);
   }
+  RAILY_WAKE_LOOP();
 }
 
 static bool linkTrustedNow(uint16_t connHdl);  // defined next to linkTrustedLocked()
@@ -555,6 +673,7 @@ static void sendAuthorizeReply(uint16_t connHdl, const ble_gatts_rw_authorize_re
   if (sd_ble_gatts_rw_authorize_reply(connHdl, &reply) != NRF_SUCCESS) {
     authorizeReplyFailures = authorizeReplyFailures + 1;
     pendingFeedback.store(4, std::memory_order_relaxed);
+    RAILY_WAKE_LOOP();
   }
 }
 
@@ -715,6 +834,7 @@ static void onPassAuthorize(uint16_t connHdl, BLECharacteristic*, ble_gatts_evt_
     return;
   }
   if (admitted) {  // nothing for loop() to run: the table is persisted there
+    RAILY_WAKE_LOOP();
     acceptWriteAuthorize(connHdl, request);
     return;
   }
@@ -733,6 +853,7 @@ static void onPassAuthorize(uint16_t connHdl, BLECharacteristic*, ble_gatts_evt_
     return;
   }
   pendingPassAction.store(action, std::memory_order_relaxed);
+  RAILY_WAKE_LOOP();
   acceptWriteAuthorize(connHdl, request);
 }
 
@@ -769,6 +890,7 @@ static void onScreenStateAuthorize(uint16_t connHdl, BLECharacteristic*, ble_gat
     rejectWriteAuthorize(connHdl, BLE_GATT_STATUS_ATTERR_APP_BEGIN + (verdict - 0x80));
     return;
   }
+  RAILY_WAKE_LOOP();
   acceptWriteAuthorize(connHdl, request);
 }
 
@@ -812,6 +934,9 @@ static void onButtonEventReadAuthorize(uint16_t connHdl, BLECharacteristic*, ble
 // link's value. No usable nonce → a new one; an empty RNG pool → zeros, and
 // the phone reads again.
 static void onPassChallengeAuthorize(uint16_t connHdl, BLECharacteristic*, ble_gatts_evt_read_t* request) {
+#if RAILY_IDLE_SLEEP
+  bool spentSpare = false;
+#endif
   uint8_t value[PASS_CHALLENGE_LENGTH];
   xSemaphoreTake(passMutex, portMAX_DELAY);
   uint32_t now = millis();
@@ -822,6 +947,9 @@ static void onPassChallengeAuthorize(uint16_t connHdl, BLECharacteristic*, ble_g
     if (spareNonceReady) {
       passNonce.issue(spareNonce, now);
       spareNonceReady = false;
+#if RAILY_IDLE_SLEEP
+      spentSpare = true;
+#endif
     } else {
       uint8_t fresh[PASS_NONCE_LENGTH];
       if (tryRandomNow(fresh, sizeof(fresh))) passNonce.issue(fresh, now);
@@ -834,6 +962,9 @@ static void onPassChallengeAuthorize(uint16_t connHdl, BLECharacteristic*, ble_g
     value[PASS_NONCE_LENGTH] |= PASS_FLAG_BIND_WINDOW;
   }
   xSemaphoreGive(passMutex);
+#if RAILY_IDLE_SLEEP
+  if (spentSpare) wakeLoop();  // loop() refills the spare nonce
+#endif
   replyRead(connHdl, request, value, sizeof(value));
 }
 
@@ -857,6 +988,7 @@ static void onConnect(uint16_t connHdl) {
   connected.store(true, std::memory_order_relaxed);
   passRejectedRecently = false;
   linkSetupPending.store(true, std::memory_order_relaxed);
+  RAILY_WAKE_LOOP();
 }
 
 static void onDisconnect(uint16_t, uint8_t) {
@@ -871,6 +1003,7 @@ static void onDisconnect(uint16_t, uint8_t) {
   sealedSecretLength = 0;  // serial s must not print a seal the pin no longer serves
   deviceSecretChr.write(sealedSecret, 0);
   xSemaphoreGive(passMutex);
+  RAILY_WAKE_LOOP();  // the LED and the screen follow the link
 }
 
 // Runs in the BLE task after Bluefruit's own handlers (so a new pairing's
@@ -897,12 +1030,14 @@ static void onBleEvent(ble_evt_t* evt) {
   switch (evt->header.evt_id) {
     case BLE_GAP_EVT_CONNECTED:
       cacheLink(connHdl, true, true);
+      RAILY_WAKE_LOOP();
       break;
     case BLE_GAP_EVT_DISCONNECTED: {
       // A held press belongs to this link (press_hold.h): never to the next.
       if (cacheLink(connHdl, false, true)) pendingScreenPressFailed.store(true, std::memory_order_relaxed);
       // A confirmation still waiting for loop() belongs to this link only.
       serviceChangedConfirmedHandle.store(BLE_CONN_HANDLE_INVALID, std::memory_order_relaxed);
+      RAILY_WAKE_LOOP();
       break;
     }
     case BLE_GAP_EVT_AUTH_STATUS: {
@@ -920,14 +1055,17 @@ static void onBleEvent(ble_evt_t* evt) {
       xSemaphoreGive(passMutex);
       bondCapDueMs.store(millis() + BOND_CAP_DELAY_MS, std::memory_order_relaxed);
       bondCapPending.store(true, std::memory_order_relaxed);
+      RAILY_WAKE_LOOP();
       break;
     }
     case BLE_GAP_EVT_CONN_SEC_UPDATE:
       cacheLink(connHdl, true);
       serviceChangedCheckPending.store(true, std::memory_order_relaxed);
+      RAILY_WAKE_LOOP();
       break;
     case BLE_GATTS_EVT_SC_CONFIRM:
       serviceChangedConfirmedHandle.store(connHdl, std::memory_order_relaxed);
+      RAILY_WAKE_LOOP();
       break;
     default:
       break;
@@ -1321,19 +1459,85 @@ static void startAdv() {
 #if RAILY_MOTOR
 static RhythmPlayer rhythm = {};
 static bool motorReady = false;
-static bool motorOn = false;
+static bool motorOn = false;  // the state the motor last took
 static bool motorQuiet = false;
+// A DA7280 write failed: the wanted state is written again, even when it
+// equals motorOn (a lost ACK may hide a drive that did land), until it
+// takes. Every MOTOR_RETRY_MS, every MOTOR_RETRY_SLOW_MS after
+// MOTOR_RETRY_FAST failures in a row (an unplugged board). The GPIO
+// fallback never fails.
+static bool motorRetry = false;
+static bool motorRetryOn = false;  // state requested by the failed write
+static uint32_t motorRetryAtMs = 0;
+static uint8_t motorFailStreak = 0;
+static const uint32_t MOTOR_RETRY_MS = 20;
+static const uint32_t MOTOR_RETRY_SLOW_MS = 1000;
+static const uint8_t MOTOR_RETRY_FAST = 10;
 static const uint8_t MOTOR_ON_LEVEL = RAILY_MOTOR_ACTIVE_LOW ? LOW : HIGH;
 static const uint8_t MOTOR_OFF_LEVEL = RAILY_MOTOR_ACTIVE_LOW ? HIGH : LOW;
+
+// D6/D7 as open-drain lines for soft_i2c.h: S0D1 (pull low or let go,
+// never drive high) with the input buffer connected, so a read sees the
+// wire. OUT is set before the pin becomes an output: no low glitch.
+struct HapticPins {
+  uint32_t sdaPin = 0;
+  uint32_t sclPin = 0;
+  static void openDrain(uint32_t pin) {
+    nrf_gpio_pin_set(pin);
+    nrf_gpio_cfg(pin, NRF_GPIO_PIN_DIR_OUTPUT, NRF_GPIO_PIN_INPUT_CONNECT, NRF_GPIO_PIN_NOPULL,
+                 NRF_GPIO_PIN_S0D1, NRF_GPIO_PIN_NOSENSE);
+  }
+  void begin(bool swapped) {
+    sdaPin = g_ADigitalPinMap[swapped ? RAILY_HAPTIC_SCL_PIN : RAILY_HAPTIC_SDA_PIN];
+    sclPin = g_ADigitalPinMap[swapped ? RAILY_HAPTIC_SDA_PIN : RAILY_HAPTIC_SCL_PIN];
+    openDrain(sdaPin);
+    openDrain(sclPin);
+  }
+  // Back to the reset default (a disconnected input), as on an old build.
+  void end() {
+    nrf_gpio_cfg_default(sdaPin);
+    nrf_gpio_cfg_default(sclPin);
+  }
+  void sda(bool release) { nrf_gpio_pin_write(sdaPin, release ? 1 : 0); }
+  void scl(bool release) { nrf_gpio_pin_write(sclPin, release ? 1 : 0); }
+  bool readSda() { return nrf_gpio_pin_read(sdaPin) != 0; }
+  bool readScl() { return nrf_gpio_pin_read(sclPin) != 0; }
+  __attribute__((noinline)) void halfPeriod() { delayMicroseconds(5); }  // ~100 kHz
+};
+
+// The old Grove module on D0: a plain output at the off level.
+struct GroveMotorPin {
+  void begin() {
+    pinMode(RAILY_MOTOR_PIN, OUTPUT);
+    digitalWrite(RAILY_MOTOR_PIN, MOTOR_OFF_LEVEL);
+  }
+  void drive(bool on) { digitalWrite(RAILY_MOTOR_PIN, on ? MOTOR_ON_LEVEL : MOTOR_OFF_LEVEL); }
+};
+
+static HapticPins hapticPins;
+static GroveMotorPin groveMotor;
+static HapticMotor<HapticPins, GroveMotorPin> hapticMotor(hapticPins, groveMotor);
+
+// Its own frame: the bit-bang stays out of the updateOutputs stack budget.
+static __attribute__((noinline)) bool driveMotor(bool on) { return hapticMotor.drive(on); }
 #endif
 
-// A plain output at the off level, from setup() after BLE advertises (the
-// pre-flash gate: nothing before Bluefruit.begin() may fault). Until then
-// the pin is the reset default, an unconnected input.
-static void startMotorPin() {
+// The motor, from setup() after BLE advertises (the pre-flash gate:
+// nothing before Bluefruit.begin() may fault). Probes the DA7280 on D6/D7
+// (a few ms, every wait bounded), else makes D0 a plain output at the off
+// level. Until then D0, D6 and D7 are the reset default, unconnected inputs.
+static __attribute__((noinline)) void startMotorPin() {
 #if RAILY_MOTOR
-  pinMode(RAILY_MOTOR_PIN, OUTPUT);
-  digitalWrite(RAILY_MOTOR_PIN, MOTOR_OFF_LEVEL);
+  if (hapticMotor.begin() == HAPTIC_BACKEND_DA7280) {
+    const bool swapped = hapticMotor.swapped();
+    Serial.printf("haptic: DA7280 chip 0x%02X at 0x%02X, SDA=D%u SCL=D%u%s\n", hapticMotor.chipRev(),
+                  da7280::ADDRESS, (unsigned)(swapped ? RAILY_HAPTIC_SCL_PIN : RAILY_HAPTIC_SDA_PIN),
+                  (unsigned)(swapped ? RAILY_HAPTIC_SDA_PIN : RAILY_HAPTIC_SCL_PIN),
+                  swapped ? " (swapped: the cable is reversed)" : "");
+  } else {
+    Serial.printf("haptic: no DA7280 at 0x%02X on D%u/D%u (id 0x%02X), motor on D0 (Grove)\n", da7280::ADDRESS,
+                  (unsigned)RAILY_HAPTIC_SDA_PIN, (unsigned)RAILY_HAPTIC_SCL_PIN, hapticMotor.chipRev());
+  }
   motorReady = true;
 #endif
 }
@@ -1351,9 +1555,21 @@ static void updateMotor(uint32_t now, uint8_t rawAck) {
   }
   if (rawAck != 0) rhythm.trigger(rhythmForEventAck(rawAck), now);
   const bool on = rhythm.tick(now);
-  if (on != motorOn) {
-    digitalWrite(RAILY_MOTOR_PIN, on ? MOTOR_ON_LEVEL : MOTOR_OFF_LEVEL);
-    motorOn = on;
+  const bool due = !motorRetry || (int32_t)(now - motorRetryAtMs) >= 0;
+  const bool offSupersedesOnRetry = hapticOffSupersedesRetry(motorRetry, motorRetryOn, on);
+  if ((on != motorOn || motorRetry) && (due || offSupersedesOnRetry)) {
+    if (driveMotor(on)) {
+      motorOn = on;
+      motorRetry = false;
+      motorRetryOn = false;
+      motorFailStreak = 0;
+    } else {
+      motorRetry = true;
+      motorRetryOn = on;
+      if (motorFailStreak < 0xFF) motorFailStreak++;
+      motorRetryAtMs = now + hapticRetryDelayMs(on, motorFailStreak, MOTOR_RETRY_MS, MOTOR_RETRY_SLOW_MS,
+                                                MOTOR_RETRY_FAST);
+    }
   }
 #else
   (void)now;
@@ -1361,7 +1577,365 @@ static void updateMotor(uint32_t now, uint8_t rawAck) {
 #endif
 }
 
+// Battery telemetry (docs/pins/battery-telemetry-design.md; pure parts
+// battery_curve.h and vdd_log.h). Loop task only (setup() shares it), never
+// a BLE callback. Pins by the Seeed variant's index (g_ADigitalPinMap), not
+// the port number: VBAT_ENABLE 14 = P0.14, PIN_VBAT 32 = P0.31 (AIN7),
+// 23 = P0.17.
+#if !defined(PIN_VBAT) || !defined(VBAT_ENABLE)
+#error "the variant has no PIN_VBAT / VBAT_ENABLE: check the core (battery-telemetry-design.md «Traps» 3)"
+#endif
+static const uint8_t BATTERY_CHG_PIN = 23;  // D23 is P0.17, the BQ25101 ~CHG (LOW = charging)
+static uint32_t batteryMv = 0;
+static uint8_t batteryPct = 0;
+static uint8_t batteryPower = 0;     // the byte served: USB, charging, low, critical
+static uint8_t batteryPowerRaw = 0;  // USB and charging only: what a 1 s poll compares
+#if !RAILY_BAT_ON_XIAO
+static BatteryLowWatch batteryLow = {};  // low / critical from VDD (the Expansion Board kit)
+#endif
+static uint32_t batteryNextMs = 0;  // the next 60 s reading (idleSleepMs wakes for it)
+static uint32_t batteryPollMs = 0;  // the last power-byte poll
+static BatteryNotifyMark batteryMark = {};
+
+// USB from the SoftDevice («Traps» 2: it owns NRF_POWER). Charging from
+// ~CHG only where the cell is on the XIAO; on the Expansion Board kit the
+// XIAO's own charger has no cell, so the bit stays 0.
+static uint8_t readPowerByte() {
+  uint32_t usbReg = 0;
+  const bool usb = sd_power_usbregstatus_get(&usbReg) == NRF_SUCCESS &&
+                   (usbReg & POWER_USBREGSTATUS_VBUSDETECT_Msk) != 0;
+#if RAILY_BAT_ON_XIAO
+  return batteryPowerByte(usb, digitalRead(BATTERY_CHG_PIN) == LOW);
+#else
+  return batteryPowerByte(usb, false);
+#endif
+}
+
+// The ADC settings P0.31 is read with: 12-bit, internal 2.4 V range, 40 µs
+// acquisition (the divider's ~338 kΩ source reads low at the core's
+// default 3 µs). The core keeps them in globals with no getters, so every
+// reader sets its own and the VDD reader puts these back after it.
+static void adcForVbat() {
+  analogReference(AR_INTERNAL_2_4);
+  analogReadResolution(12);
+  analogSampleTime(40);
+}
+
+// P0.31 in mV after the divider's inverse gain, 8 samples.
+static __attribute__((noinline)) uint32_t readVbatMv() {
+  adcForVbat();
+  uint32_t sum = 0;
+  for (uint32_t i = 0; i < BATTERY_SAMPLES; i++) sum += analogRead(PIN_VBAT);
+  return batteryMillivolts(sum, BATTERY_SAMPLES);
+}
+
+// The nRF's own VDD on the SAADC's internal VDD input (no pin): 8 samples,
+// 12-bit, internal 3.6 V range (gain 1/6: the 2.4 V range would clamp a
+// 3.3 V rail). The P0.31 settings are put back afterwards.
+static __attribute__((noinline)) uint32_t readVddMv() {
+  analogReference(AR_INTERNAL);
+  analogReadResolution(12);
+  analogSampleTime(40);
+  uint32_t sum = 0;
+  for (uint32_t i = 0; i < BATTERY_SAMPLES; i++) sum += analogReadVDD();
+  adcForVbat();
+  return vddMillivolts(sum, BATTERY_SAMPLES);
+}
+
+// One reading. Both values are written every time (a read is always
+// current); a notify goes out only on a change («Traps» 7).
+static __attribute__((noinline)) void sampleBattery(uint32_t now, uint8_t power) {
+  batteryMv = readVbatMv();
+  batteryPct = batteryPercentFromMv(batteryMv);
+  batteryPowerRaw = power;
+#if RAILY_BAT_ON_XIAO
+  batteryPower = power;
+#else
+  batteryLow.reading(readVddMv(), (power & BATTERY_POWER_USB) != 0);
+  batteryPower = (uint8_t)(power | batteryLow.powerBits());
+#endif
+  batteryNextMs = now + BATTERY_SAMPLE_PERIOD_MS;
+  powerStateChr.write8(batteryPower);
+  // notify() is false with no subscriber or no free buffer: the mark stays,
+  // so the value goes out on the next reading.
+#if RAILY_BAT_ON_XIAO
+  blebas.write(batteryPct);
+  if (batteryMark.percentDue(batteryPct) && blebas.notify(batteryPct)) batteryMark.percentNotified(batteryPct);
+#endif
+  if (batteryMark.powerDue(batteryPower) && powerStateChr.notify8(batteryPower)) {
+    batteryMark.powerNotified(batteryPower);
+  }
+}
+
+// From loop(): the power byte once a second, a reading every 60 s or at once
+// when USB or charging flips.
+static __attribute__((noinline)) void serviceBattery() {
+  const uint32_t now = millis();
+  if ((uint32_t)(now - batteryPollMs) < BATTERY_POWER_POLL_MS && (int32_t)(now - batteryNextMs) < 0) return;
+  batteryPollMs = now;
+  const uint8_t power = readPowerByte();
+  if (batteryReadingDue(now, batteryNextMs, power, batteryPowerRaw)) sampleBattery(now, power);
+}
+
+// Serial `i`'s "bat" (the last P0.31 reading) and "vdd" (VDD now, mV). Its
+// own frame, so printDeviceInfo stays within its budget.
+static __attribute__((noinline)) void printBatteryBench() {
+  Serial.printf(",\"bat\":{\"mv\":%lu,\"pct\":%u,\"usb\":%u,\"chg\":%u,\"low\":%u},\"vdd\":%lu",
+                (unsigned long)batteryMv, (unsigned)batteryPct, (batteryPower & BATTERY_POWER_USB) ? 1u : 0u,
+                (batteryPower & BATTERY_POWER_CHARGING) ? 1u : 0u,
+                (batteryPower & BATTERY_POWER_CRITICAL) ? 2u : (batteryPower & BATTERY_POWER_LOW) ? 1u : 0u,
+                (unsigned long)readVddMv());
+}
+
+#if RAILY_VDD_BENCH
+// The VDD discharge bench (vdd_log.h, battery-telemetry-design.md
+// «Expansion Board kit»): a record a minute in InternalFS while serial `V1`
+// is set, a steady LED load while `L1` is set; both survive a reboot.
+// Loop task only. The files live in their own directory, so the
+// per-minute directory commit stays off the root's metadata.
+static const char VDD_DIR[] = "/vddlog";
+static const char VDD_CONFIG_PATH[] = "/vddlog/cfg.bin";
+static const char* VDD_SEGMENT_PATHS[2] = {"/vddlog/a.bin", "/vddlog/b.bin"};
+static VddConfig vddConfig = {false, false, 0};
+static uint16_t vddBoot = 1;           // this boot's number: the last logged boot + 1
+static uint8_t vddPendingFlags = 0;    // VDD_FLAG_BOOT / VDD_FLAG_START for the next record
+static uint32_t vddLogNextMs = 0;      // the next record (idleSleepMs wakes for it)
+static uint32_t vddActiveRecords = 0;  // records in the current segment
+static uint32_t vddSkipped = 0;        // records not written since boot (floor, space, flash)
+
+static bool writeVddConfig() {
+  if (!InternalFS.exists(VDD_DIR)) InternalFS.mkdir(VDD_DIR);
+  uint8_t rec[VDD_CONFIG_LENGTH];
+  vddConfigEncode(vddConfig, rec);
+  File file(InternalFS);
+  if (!file.open(VDD_CONFIG_PATH, FILE_O_WRITE)) return false;
+  file.seek(0);  // FILE_O_WRITE seeks to the end
+  bool ok = file.write(rec, sizeof(rec)) == sizeof(rec) && file.truncate(sizeof(rec));
+  file.close();
+  return ok;
+}
+
+// Whole records in a segment file (a missing file has none).
+static uint32_t vddSegmentRecords(uint8_t segment) {
+  File file(InternalFS);
+  if (!file.open(VDD_SEGMENT_PATHS[segment & 1], FILE_O_READ)) return 0;
+  const uint32_t records = file.size() / VDD_RECORD_LENGTH;
+  file.close();
+  return records;
+}
+
+// Free InternalFS blocks, counted under the filesystem's own lock (the BLE
+// task writes bond files through the same littlefs). The callback touches
+// nothing but the counter.
+static int countVddBlock(void* data, lfs_block_t block) {
+  (void)block;
+  (*(uint32_t*)data)++;
+  return 0;
+}
+static uint32_t vddFreeBlocks() {
+  uint32_t used = 0;
+  InternalFS._lockFS();
+  const int err = lfs_traverse(InternalFS._getFS(), countVddBlock, &used);
+  InternalFS._unlockFS();
+  if (err < 0 || used >= VDD_LOG_FS_BLOCKS) return 0;
+  return VDD_LOG_FS_BLOCKS - used;
+}
+
+// Calls visit(record) for every record, older segment first. Reads 8
+// records at a time with the file closed in between, so nothing stays open
+// while slow USB output prints.
+// A plain function pointer with header types only: the Arduino prototype
+// pass puts declarations above the sketch's own typedefs and templates.
+static __attribute__((noinline)) void forEachVddRecord(void (*visit)(const VddRecord& record)) {
+  static uint8_t chunk[8 * VDD_RECORD_LENGTH];
+  for (int n = 0; n < 2; n++) {
+    const uint8_t segment = (uint8_t)((vddConfig.active + 1 + n) & 1);
+    uint32_t offset = 0;
+    for (;;) {
+      File file(InternalFS);
+      if (!file.open(VDD_SEGMENT_PATHS[segment], FILE_O_READ)) break;
+      size_t got = 0;
+      if (file.seek(offset)) got = file.read(chunk, sizeof(chunk));
+      file.close();
+      const size_t whole = got / VDD_RECORD_LENGTH;
+      for (size_t i = 0; i < whole; i++) {
+        VddRecord rec;
+        if (vddRecordDecode(chunk + i * VDD_RECORD_LENGTH, &rec)) visit(rec);
+      }
+      if (whole < 8) break;
+      offset += sizeof(chunk);
+    }
+  }
+}
+
+// setup(): read-only. The settings, the current segment's length and this
+// boot's number (the last boot's + 1). Nothing is written at boot: a cell
+// browning out in a boot loop must not write flash on every boot. The boot
+// record is the first one, a minute in.
+static uint16_t vddLastBoot = 0;
+static void noteVddBoot(const VddRecord& r) {
+  if (r.boot > vddLastBoot) vddLastBoot = r.boot;
+}
+static __attribute__((noinline)) void restoreVddBench() {
+  uint8_t rec[VDD_CONFIG_LENGTH + 1];
+  size_t length = 0;
+  File file(InternalFS);
+  if (file.open(VDD_CONFIG_PATH, FILE_O_READ)) {
+    length = file.read(rec, sizeof(rec));
+    file.close();
+  }
+  vddConfig = vddConfigDecode(rec, length);
+  vddActiveRecords = vddSegmentRecords(vddConfig.active);
+  vddLastBoot = 0;
+  forEachVddRecord(noteVddBoot);
+  vddBoot = (uint16_t)(vddLastBoot + 1);
+  vddPendingFlags = VDD_FLAG_BOOT;
+  vddLogNextMs = millis() + VDD_LOG_PERIOD_MS;
+  Serial.printf("vddlog: %s, load %s, boot %u, %lu records in segment %u\n", vddConfig.log ? "on" : "off",
+                vddConfig.load ? "on" : "off", (unsigned)vddBoot, (unsigned long)vddActiveRecords,
+                (unsigned)vddConfig.active);
+}
+
+// One append, after the floor check: drops the older segment when the
+// current one is full or space is low, skips when even that cannot help.
+static __attribute__((noinline)) bool appendVddRecord(const VddRecord& rec) {
+  const uint8_t older = (uint8_t)(vddConfig.active ^ 1);
+  const VddAppendPlan plan =
+      vddPlanAppend(vddActiveRecords, InternalFS.exists(VDD_SEGMENT_PATHS[older]), vddFreeBlocks());
+  if (plan == VDD_SKIP_NO_SPACE) {
+    Serial.println("vddlog: filesystem too full, record skipped");
+    return false;
+  }
+  if (plan == VDD_SWITCH) {
+    // Safe across a power cut: until the settings name the new segment, the
+    // next append sees the full one and switches again. A failed settings
+    // write leaves that file unchanged, so RAM must keep naming it too.
+    const uint8_t previous = vddConfig.active;
+    InternalFS.remove(VDD_SEGMENT_PATHS[older]);
+    vddConfig.active = older;
+    if (!writeVddConfig()) {
+      vddConfig.active = previous;
+      Serial.println("vddlog: settings write failed, record skipped");
+      return false;
+    }
+    vddActiveRecords = 0;
+  }
+  if (!InternalFS.exists(VDD_DIR)) InternalFS.mkdir(VDD_DIR);
+  uint8_t bytes[VDD_RECORD_LENGTH];
+  vddRecordEncode(rec, bytes);
+  File file(InternalFS);
+  if (!file.open(VDD_SEGMENT_PATHS[vddConfig.active], FILE_O_WRITE)) return false;  // opens at the end
+  const bool ok = file.write(bytes, sizeof(bytes)) == sizeof(bytes);
+  file.close();
+  if (ok) vddActiveRecords++;
+  return ok;
+}
+
+// From loop(): a record a minute while logging. Every path moves the
+// deadline on first, so the sleep build never spins on a past deadline.
+static __attribute__((noinline)) void serviceVddLog() {
+  if (!vddConfig.log) return;
+  const uint32_t now = millis();
+  if ((int32_t)(now - vddLogNextMs) < 0) return;
+  vddLogNextMs = now + VDD_LOG_PERIOD_MS;
+  VddRecord rec;
+  rec.uptimeS = now / 1000;
+  rec.vddMv = (uint16_t)readVddMv();
+  rec.p031Mv = (uint16_t)readVbatMv();
+  rec.boot = vddBoot;
+  rec.flags = (uint8_t)(vddPendingFlags | ((readPowerByte() & BATTERY_POWER_USB) ? VDD_FLAG_USB : 0) |
+                        (vddConfig.load ? VDD_FLAG_LOAD : 0));
+  rec.reset = vddPackResetReason(bootResetReason);
+  if (rec.vddMv < VDD_LOG_FLOOR_MV) {
+    vddSkipped++;
+    Serial.printf("vddlog: VDD %u mV under the %lu mV floor, not written\n", (unsigned)rec.vddMv,
+                  (unsigned long)VDD_LOG_FLOOR_MV);
+    return;
+  }
+  if (appendVddRecord(rec)) {
+    vddPendingFlags = 0;
+  } else {
+    vddSkipped++;
+  }
+}
+
+// Serial `v`: the log as CSV, older records first. A boot, a log-on and a
+// change of the load are `#` comment lines before their row.
+static int vddDumpLastLoad = -1;
+static void printVddRow(const VddRecord& r) {
+  if (r.flags & VDD_FLAG_BOOT) Serial.printf("# boot %u reset 0x%02x\n", (unsigned)r.boot, (unsigned)r.reset);
+  if (r.flags & VDD_FLAG_START) Serial.printf("# log on (boot %u)\n", (unsigned)r.boot);
+  const int load = (r.flags & VDD_FLAG_LOAD) ? 1 : 0;
+  if (load != vddDumpLastLoad) Serial.printf("# load %d\n", load);
+  vddDumpLastLoad = load;
+  Serial.printf("%lu,%u,%u,%u\n", (unsigned long)r.uptimeS, (unsigned)r.vddMv, (unsigned)r.p031Mv,
+                (r.flags & VDD_FLAG_USB) ? 1u : 0u);
+}
+static __attribute__((noinline)) void dumpVddLog() {
+  Serial.printf("# vddlog fw=%s boot=%u log=%u load=%u records=%lu+%lu floor_mv=%lu skipped=%lu\n", FW_VERSION,
+                (unsigned)vddBoot, vddConfig.log ? 1u : 0u, vddConfig.load ? 1u : 0u,
+                (unsigned long)vddSegmentRecords((uint8_t)(vddConfig.active ^ 1)), (unsigned long)vddActiveRecords,
+                (unsigned long)VDD_LOG_FLOOR_MV, (unsigned long)vddSkipped);
+  Serial.println("t,vdd,p031,usb");
+  vddDumpLastLoad = -1;
+  forEachVddRecord(printVddRow);
+  Serial.println("# end");
+}
+
+// Serial `v`, `V1`, `V0`, `Vx`, `L1`, `L0` (vdd_log.h VddSerial). Returns
+// whether c was part of one of them.
+static __attribute__((noinline)) bool vddSerialChar(char c) {
+  static VddSerial parser = {};
+  VddCommand command;
+  const bool consumed = parser.feed(c, &command);
+  switch (command) {
+    case VDD_CMD_DUMP:
+      dumpVddLog();
+      break;
+    case VDD_CMD_LOG_ON:
+      vddConfig.log = true;
+      vddPendingFlags |= VDD_FLAG_START;
+      vddLogNextMs = millis() + VDD_LOG_PERIOD_MS;
+      Serial.printf("vddlog: on%s\n", writeVddConfig() ? "" : " (settings write failed: off after a reboot)");
+      break;
+    case VDD_CMD_LOG_OFF:
+      vddConfig.log = false;
+      Serial.printf("vddlog: off%s\n", writeVddConfig() ? "" : " (settings write failed)");
+      break;
+    case VDD_CMD_ERASE:
+      InternalFS.remove(VDD_SEGMENT_PATHS[0]);
+      InternalFS.remove(VDD_SEGMENT_PATHS[1]);
+      vddConfig.active = 0;
+      vddActiveRecords = 0;
+      Serial.printf("vddlog: erased%s\n", writeVddConfig() ? "" : " (settings write failed)");
+      break;
+    case VDD_CMD_LOAD_ON:
+    case VDD_CMD_LOAD_OFF:
+      vddConfig.load = command == VDD_CMD_LOAD_ON;
+      Serial.printf("vddlog: LED load %s%s\n", vddConfig.load ? "on (red, green and blue steady)" : "off",
+                    writeVddConfig() ? "" : " (settings write failed)");
+      break;
+    default:
+      break;
+  }
+  return consumed;
+}
+#endif  // RAILY_VDD_BENCH
+
 void setup() {
+#if RAILY_IDLE_SLEEP
+  loopTask = xTaskGetCurrentTaskHandle();  // before any BLE callback can wake it
+#endif
+  // Every build: P0.14 (VBAT_ENABLE) LOW for good, never the variant's HIGH,
+  // which exposes P0.31 to the cell (battery-telemetry-design.md «Traps» 1;
+  // the divider then costs ~2.8 µA). Never toggled, never an input.
+  // initVariant() has already driven it HIGH before setup(): the level goes
+  // LOW first, then the direction is (re)stated.
+  digitalWrite(VBAT_ENABLE, LOW);
+  pinMode(VBAT_ENABLE, OUTPUT);
+#if RAILY_BAT_ON_XIAO
+  pinMode(BATTERY_CHG_PIN, INPUT_PULLUP);  // ~CHG is open drain
+#endif
   pinMode(LED_RED, OUTPUT);
   pinMode(LED_GREEN, OUTPUT);
   pinMode(LED_BLUE, OUTPUT);
@@ -1404,6 +1978,11 @@ void setup() {
   Bluefruit.Security.setIOCaps(false, false, false);
   Bluefruit.Security.setMITM(false);
   Bluefruit.setEventCallback(onBleEvent);
+#if RAILY_IDLE_SLEEP
+  // Bluefruit's own blue blink while advertising: a timer wake every 500 ms
+  // and a lit LED. The Air LED is quiet (quietLights).
+  Bluefruit.autoConnLed(false);
+#endif
   firmwareBuildHash = firmwareHash(FW_VERSION);
 
   bledis.setManufacturer("Raily");
@@ -1505,10 +2084,39 @@ void setup() {
   linkSecurityChr.setReadAuthorizeCallback(onLinkSecurityAuthorize, false);
   linkSecurityChr.begin();
 
+  // Power state (battery-telemetry-design.md): last in the Raily service, so
+  // every earlier handle stays where it was; open read, no write.
+  powerStateChr.setProperties(CHR_PROPS_READ | CHR_PROPS_NOTIFY);
+  powerStateChr.setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS);
+  powerStateChr.setFixedLen(1);
+  powerStateChr.begin();
+#if RAILY_BAT_ON_XIAO
+  // The Battery Service after the Raily characteristics (a characteristic
+  // joins the service begun last).
+  blebas.begin();
+#endif
+  // The first reading before advertising: a phone never reads the
+  // zero-initialised 0 % (an update gate would refuse it).
+  sampleBattery(millis(), readPowerByte());
+  batteryPollMs = millis();
+  Serial.printf("battery: %lu mV, %u%%, usb %u, chg %u, vdd %lu mV%s\n", (unsigned long)batteryMv,
+                (unsigned)batteryPct, (batteryPower & BATTERY_POWER_USB) ? 1u : 0u,
+                (batteryPower & BATTERY_POWER_CHARGING) ? 1u : 0u, (unsigned long)readVddMv(),
+                RAILY_BAT_ON_XIAO ? "" : " (no 0x180F: the cell is not on the XIAO)");
+#if RAILY_VDD_BENCH
+  restoreVddBench();
+#endif
+
   startAdv();
   startMotorPin();
+#if RAILY_BUTTON
+  startButton();  // after advertising, like the motor pin (the pre-flash gate)
+#endif
   Serial.println(deviceInfoJson);
   Serial.println("Type p + Enter to simulate a button press, i + Enter to reprint device info, s + Enter to print the sealed secret, w + Enter to open the bind window, r + Enter to reset, o<scene>[shape[material[locale]]] + Enter to show a screen scene, of + Enter to drop the pin (the fall), c<hex byte> + Enter to play an event_ack byte (motor rhythm), x + Enter to erase every BLE bond");
+#if RAILY_VDD_BENCH
+  Serial.println("VDD bench: v to dump the log, V1/V0 to start/stop it, Vx to erase it, L1/L0 for the LED load");
+#endif
   printStackMarks("boot");
   Serial.println("ready");
 }
@@ -1694,6 +2302,22 @@ static __attribute__((noinline)) void printBondBench(char* line, size_t size) {
   if (n > 0 && n < (int)size) Serial.print(line);
 }
 
+// Serial `i`'s "haptic" (docs/pins/firmware.md «Vibration motor»): which
+// motor the boot probe chose, "da7280" ("da7280-swapped" when the cable is
+// reversed), "d0" (the Grove fallback) or "off" (-DRAILY_MOTOR=0), and the
+// DA7280 writes that failed since boot. Bench only: the GATT device_info
+// value is unchanged.
+static __attribute__((noinline)) void printHapticBench() {
+#if RAILY_MOTOR
+  const HapticBackend backend = hapticMotor.backend();
+  Serial.printf(",\"haptic\":\"%s%s\",\"hap_err\":%lu",
+                backend == HAPTIC_BACKEND_DA7280 ? "da7280" : backend == HAPTIC_BACKEND_GPIO ? "d0" : "none",
+                hapticMotor.swapped() ? "-swapped" : "", (unsigned long)hapticMotor.errors());
+#else
+  Serial.print(",\"haptic\":\"off\"");
+#endif
+}
+
 // Serial `i`: the extended device-info line. Its 256-byte buffer lives in
 // this frame, not in loop()'s (stack_budget.json). The line ends with
 // "scr" (screen_bench.h): the same buffer is printed twice, the document
@@ -1719,6 +2343,8 @@ static __attribute__((noinline)) void printDeviceInfo() {
     Serial.print(line);
   }
   printBondBench(line, sizeof(line));
+  printHapticBench();
+  printBatteryBench();
   Serial.println('}');
 }
 
@@ -1806,7 +2432,14 @@ static void updateScreen(uint32_t now, uint8_t ack, bool linkUp) {
   static bool drawnOnce = false;
   static uint32_t drawnAtMs = 0;
   bool changed = !drawnOnce || !frame.sameImage(drawn) || frame.contrast != drawn.contrast;
+#if RAILY_IDLE_SLEEP
+  // The panel goes dark at once: the sleep build may not wake again for 1 s
+  // (screenBusy() is false once the scene is off).
+  const bool throttled = frame.scene != OLED_SCENE_OFF && drawnOnce && (uint32_t)(now - drawnAtMs) < OLED_FRAME_MS;
+  if (!changed || throttled) return;
+#else
   if (!changed || (drawnOnce && (uint32_t)(now - drawnAtMs) < OLED_FRAME_MS)) return;
+#endif
   oledShow(frame);
   drawn = frame;
   drawnOnce = true;
@@ -1873,6 +2506,14 @@ static __attribute__((noinline)) void updateOutputs() {
   uint8_t rawAck = pendingRhythmAck.exchange(0, std::memory_order_relaxed);
   bool linkUp = connected.load(std::memory_order_relaxed);
   FeedbackLights lights = feedback.tick(now, linkUp, ack);
+#if RAILY_IDLE_SLEEP
+  lights = quietLights(lights);
+#endif
+  // The VDD bench's load (serial L1): all three LEDs steady, over the quiet
+  // Air LED and the feedback patterns, until L0.
+#if RAILY_VDD_BENCH
+  if (vddConfig.load) lights = FeedbackLights{true, true, true};
+#endif
   if (lights.red != renderedLights.red) digitalWrite(LED_RED, lights.red ? LOW : HIGH);
   if (lights.green != renderedLights.green) digitalWrite(LED_GREEN, lights.green ? LOW : HIGH);
   if (lights.blue != renderedLights.blue) digitalWrite(LED_BLUE, lights.blue ? LOW : HIGH);
@@ -1887,7 +2528,105 @@ static __attribute__((noinline)) void updateOutputs() {
   updateMotor(now, rawAck);
 }
 
+#if RAILY_IDLE_SLEEP
+// Serial `i`'s second line in a sleep build: time blocked and wakes since
+// boot (a duty-cycle bench aid, not a current measurement).
+static uint32_t idleBlockedMs = 0;
+static uint32_t idleBlocks = 0;
+static uint32_t idleNotified = 0;
+
+// How long loop() may block now (idle_sleep.h): 0 while work raised for it
+// is still waiting, otherwise until its nearest deadline, at most 1 s
+// (10 ms on USB). tests/check_idle_wake.py checks this list against the
+// sketch's flags and deadlines.
+static __attribute__((noinline)) uint32_t idleSleepMs(uint32_t now) {
+  IdleWake wake = IdleWake::start(now, TinyUSBDevice.mounted());
+  wake.pending(pendingFeedback.load(std::memory_order_relaxed) != 0 ||
+               pendingRhythmAck.load(std::memory_order_relaxed) != 0 ||
+               pendingScreenPress.load(std::memory_order_relaxed) ||
+               pendingScreenPressFailed.load(std::memory_order_relaxed) ||
+               pendingScreenFall.load(std::memory_order_relaxed) ||
+               pendingScreenFoundYou.load(std::memory_order_relaxed) ||
+               pendingPassAction.load(std::memory_order_relaxed) != PASS_ACTION_NONE ||
+               linkSetupPending.load(std::memory_order_relaxed) ||
+               serviceChangedCheckPending.load(std::memory_order_relaxed) ||
+               serviceChangedConfirmedHandle.load(std::memory_order_relaxed) != BLE_CONN_HANDLE_INVALID);
+  xSemaphoreTake(passMutex, portMAX_DELAY);
+  const bool mailbox = screenMailboxFull;
+  const bool held = heldPress.held;
+  const bool spare = spareNonceReady;
+  const bool serving = bindWindowServes(hasSecret, secretOwned, bindWindow.isOpen(now));
+  const uint32_t windowLeftMs = bindWindow.remainingMs(now);
+  xSemaphoreGive(passMutex);
+  // bondTableDirty is not a reason: a BLE-side change wakes loop(), a
+  // loop-side one is written in the same pass, and after a failed write the
+  // 5 s retry rides the backstop (a pending() here would spin all 5 s).
+  wake.pending(mailbox);
+  // A held press waits for its link (the CCCD write does not wake loop()),
+  // a spent nonce for the RNG: short ticks until they are done.
+  wake.tick(held || !spare);
+  wake.due(rebootArmed || enterDfuArmed, rebootAtMs);  // the 300 ms drain
+  wake.due(dropLinkArmed, dropLinkAtMs);
+  wake.due(bondCapPending.load(std::memory_order_relaxed), bondCapDueMs.load(std::memory_order_relaxed));
+  wake.due(true, batteryNextMs);  // the 60 s reading (a power flip rides the 1 s backstop)
+#if RAILY_VDD_BENCH
+  wake.due(vddConfig.log, vddLogNextMs);  // the VDD bench's record a minute
+#endif
+  if (serving) wake.cap(windowLeftMs);  // the window closes: device_secret goes empty
+  wake.tick(feedbackBusy(feedback));
+#if RAILY_OLED
+  // An awake screen redraws at most every OLED_FRAME_MS; with no panel its
+  // timers run on timestamps and the backstop catches them up.
+  if (screenBusy(screen) && oledPresent()) wake.cap(OLED_FRAME_MS);
+#endif
+#if RAILY_MOTOR
+  wake.tick(rhythmBusy(rhythm));
+  wake.due(motorRetry, motorRetryAtMs);  // a failed DA7280 write, written again
+#endif
+#if RAILY_BUTTON
+  wake.pending(!buttonEdges.empty());
+  wake.due(buttonDebounce.unsettled(), buttonDebounce.settleAtMs());
+#endif
+  // Everything else loop() does on a timer (bind_s each second, the 5 s
+  // secret retry and a failed bond record's 5 s retry, the 1 s bond key
+  // print, the hourly mascot record, the panel probe, the battery power-byte
+  // poll) rides the 1 s backstop.
+  return wake.ms;
+}
+
+// The end of every loop() pass in a sleep build: block until a notify or
+// the nearest deadline. The idle task then sleeps the CPU (tickless idle,
+// sd_app_evt_wait); the SoftDevice keeps the link.
+static __attribute__((noinline)) void idleBlock() {
+  const uint32_t start = millis();
+  const uint32_t ms = idleSleepMs(start);
+  if (ms == 0) return;
+  const bool notified = ulTaskNotifyTake(pdTRUE, ms2tick(ms)) != 0;
+  idleBlockedMs += millis() - start;
+  idleBlocks++;
+  if (notified) idleNotified++;
+}
+
+static void printIdleBench() {
+  Serial.printf("idle: {\"up_ms\":%lu,\"blocked_ms\":%lu,\"blocks\":%lu,\"notified\":%lu,\"btn_dropped\":%lu}\n",
+                (unsigned long)millis(), (unsigned long)idleBlockedMs, (unsigned long)idleBlocks,
+                (unsigned long)idleNotified,
+#if RAILY_BUTTON
+                (unsigned long)buttonEdges.dropped
+#else
+                0ul
+#endif
+  );
+}
+#endif
+
 void loop() {
+#if RAILY_IDLE_SLEEP
+  // Notifies that arrived before this pass reads its flags (the loop task's
+  // own, a burst during the last pass) are answered by this pass, not by
+  // an empty one after it.
+  ulTaskNotifyTake(pdTRUE, 0);
+#endif
   if ((rebootArmed || enterDfuArmed) && (int32_t)(millis() - rebootAtMs) >= 0) {
     Serial.println(enterDfuArmed ? "pass: enter DFU" : "pass: reboot");
     Serial.flush();
@@ -1913,7 +2652,14 @@ void loop() {
     Serial.println("bond: bonded link dropped after the bond erase");
   }
   serviceBonds();
+#if RAILY_BUTTON
+  serviceButton();
+#endif
   serviceHeldPress();
+  serviceBattery();
+#if RAILY_VDD_BENCH
+  serviceVddLog();
+#endif
   // A secret that could not be made at boot (RNG or flash) is retried
   // every 5 s instead of waiting for a reboot.
   static uint32_t lastSecretRetryMs = 0;
@@ -1965,8 +2711,16 @@ void loop() {
   while (Serial.available()) {
     char c = (char)Serial.read();
     if (benchSerialChar(c)) continue;
+#if RAILY_VDD_BENCH
+    if (vddSerialChar(c)) continue;  // after the bench parser: `ov` stays a scene
+#endif
     if (c == 'p' || c == 'P') emitButtonEvent(0);
-    if (c == 'i' || c == 'I') printDeviceInfo();
+    if (c == 'i' || c == 'I') {
+      printDeviceInfo();
+#if RAILY_IDLE_SLEEP
+      printIdleBench();
+#endif
+    }
     if (c == 's' || c == 'S') printSealedSecret();
     // USB is physical access: it opens the bind window like a RESET press.
     if (c == 'w' || c == 'W') openBindWindow("serial w");
@@ -1976,4 +2730,7 @@ void loop() {
       NVIC_SystemReset();
     }
   }
+#if RAILY_IDLE_SLEEP
+  idleBlock();
+#endif
 }

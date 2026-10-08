@@ -1,0 +1,38 @@
+[
+ {
+  "part": "tray",
+  "body": "tray",
+  "file": "keyring-tray-tray.stl",
+  "cm3": 12.49
+ },
+ {
+  "part": "tray",
+  "body": "button",
+  "file": "keyring-tray-button.stl",
+  "cm3": 0.13
+ },
+ {
+  "part": "tray",
+  "body": "loop",
+  "file": "keyring-tray-loop.stl",
+  "cm3": 0.26
+ },
+ {
+  "part": "cover",
+  "body": "cover",
+  "file": "keyring-cover-cover.stl",
+  "cm3": 10.71
+ },
+ {
+  "part": "shelf",
+  "body": "shelf",
+  "file": "keyring-shelf-shelf.stl",
+  "cm3": 1.03
+ },
+ {
+  "part": "cover",
+  "body": "led",
+  "file": "keyring-cover-led.stl",
+  "cm3": 0.0
+ }
+]

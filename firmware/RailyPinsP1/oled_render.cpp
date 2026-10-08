@@ -52,6 +52,33 @@ static bool busPulledUp() {
   return high;
 }
 
+// Keyring Air (-DRAILY_IDLE_SLEEP=1, docs/pins/air-power-risks.md P2): the
+// panel's charge pump runs from the cell (VBAT), so a sleeping panel turns
+// it off too (8D 10 after AE) and back on before the display (8D 14, then
+// AF, as the SSD1306 datasheet orders it). A P1 build leaves the pump as
+// U8g2's init set it.
+#if RAILY_IDLE_SLEEP
+static const uint8_t SSD1306_CHARGE_PUMP = 0x8D;
+static const uint8_t SSD1306_PUMP_OFF = 0x10;
+static const uint8_t SSD1306_PUMP_ON = 0x14;
+#endif
+
+// The panel's sleep and wake, in the datasheet's order. Always inlined, so a
+// P1 build compiles to the bare setPowerSave() calls it had before.
+static inline __attribute__((always_inline)) void panelSleep() {
+  display->setPowerSave(1);
+#if RAILY_IDLE_SLEEP
+  display->sendF("ca", SSD1306_CHARGE_PUMP, SSD1306_PUMP_OFF);
+#endif
+}
+
+static inline __attribute__((always_inline)) void panelWake() {
+#if RAILY_IDLE_SLEEP
+  display->sendF("ca", SSD1306_CHARGE_PUMP, SSD1306_PUMP_ON);
+#endif
+  display->setPowerSave(0);
+}
+
 bool oledProbe() {
   if (probed) return present;
   probed = true;
@@ -69,7 +96,7 @@ bool oledProbe() {
   display->initDisplay();  // ends with the display off (0xAE)
   display->clearBuffer();
   display->sendBuffer();   // blank the panel RAM while it is still dark
-  display->setPowerSave(1);
+  panelSleep();
   present = true;
   return true;
 }
@@ -82,7 +109,7 @@ void oledShow(const ScreenFrame& frame) {
   if (!present) return;
   if (frame.contrast == 0 || frame.scene == OLED_SCENE_OFF) {
     if (panelOn) {
-      display->setPowerSave(1);
+      panelSleep();
       panelOn = false;
     }
     return;
@@ -112,7 +139,7 @@ void oledShow(const ScreenFrame& frame) {
     shownContrast = frame.contrast;
   }
   if (!panelOn) {  // after the pixels: a wake never flashes the last scene
-    display->setPowerSave(0);
+    panelWake();
     panelOn = true;
   }
 }
