@@ -8,6 +8,11 @@
 # Pillow for the OLED golden frames and asset checks.
 set -euo pipefail
 cd "$(dirname "$0")"
+# The Air factory test is private (owner, 2026-10-08): the public mirror has
+# no ../RailyAirFactoryTest and no test_factory_checks.cpp. Where the folder
+# exists, its checks are required, not optional.
+FACTORY_FLAGS=()
+[ -d ../RailyAirFactoryTest ] && FACTORY_FLAGS=(-DRAILY_REQUIRE_FACTORY_CHECKS)
 command -v g++ >/dev/null || { echo "run_tests.sh: g++ not found" >&2; exit 127; }
 BUILD_DIR="$(mktemp -d "${TMPDIR:-/tmp}/counter_select_test.XXXXXX")"
 trap 'rm -rf "$BUILD_DIR"' EXIT
@@ -48,7 +53,7 @@ g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
     test_rhythm.cpp -o "$BUILD_DIR/test_rhythm"
 "$BUILD_DIR/test_rhythm"
 g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
-    test_da7280.cpp -o "$BUILD_DIR/test_da7280"
+    ${FACTORY_FLAGS[@]+"${FACTORY_FLAGS[@]}"} test_da7280.cpp -o "$BUILD_DIR/test_da7280"
 "$BUILD_DIR/test_da7280"
 g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
     test_screen_state.cpp -o "$BUILD_DIR/test_screen_state"
@@ -86,9 +91,13 @@ g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
 g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
     test_vdd_log.cpp -o "$BUILD_DIR/test_vdd_log"
 "$BUILD_DIR/test_vdd_log"
-g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
-    test_factory_checks.cpp -o "$BUILD_DIR/test_factory_checks"
-"$BUILD_DIR/test_factory_checks"
+if [ -d ../RailyAirFactoryTest ]; then
+    g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+        test_factory_checks.cpp -o "$BUILD_DIR/test_factory_checks"
+    "$BUILD_DIR/test_factory_checks"
+else
+    echo "run_tests.sh: Air factory checks skipped (../RailyAirFactoryTest is private)"
+fi
 g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
     test_oled_compose.cpp -o "$BUILD_DIR/test_oled_compose"
 mkdir -p "$BUILD_DIR/oled"

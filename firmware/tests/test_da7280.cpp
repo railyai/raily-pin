@@ -9,7 +9,20 @@
 #include <vector>
 
 #include "../RailyPinsP1/da7280.h"
+// The Air factory test is private (owner, 2026-10-08): the public mirror of
+// these tests has no ../RailyAirFactoryTest, so the cross-check below runs
+// only where the header exists. run_tests.sh passes
+// -DRAILY_REQUIRE_FACTORY_CHECKS when the folder is there, so a broken
+// include path fails the private build instead of skipping silently.
+#if defined(__has_include)
+#if __has_include("../RailyAirFactoryTest/factory_checks.h")
 #include "../RailyAirFactoryTest/factory_checks.h"
+#define RAILY_HAVE_FACTORY_CHECKS 1
+#endif
+#endif
+#if defined(RAILY_REQUIRE_FACTORY_CHECKS) && !defined(RAILY_HAVE_FACTORY_CHECKS)
+#error "RailyAirFactoryTest/factory_checks.h is required here but was not found"
+#endif
 
 static int failures = 0;
 static void expect(bool condition, const char* name) {
@@ -423,6 +436,7 @@ static void testStopWritesDoNotShortCircuit() {
          "init: inactive mode is attempted after a failed amplitude stop");
 }
 
+#ifdef RAILY_HAVE_FACTORY_CHECKS
 static void testFactoryAgrees() {
   expect(HAPTIC_AMPLITUDE == 0x60 && HAPTIC_AMPLITUDE <= 0x7F,
          "factory: safe positive default amplitude");
@@ -449,6 +463,7 @@ static void testFactoryAgrees() {
   expect(da7280::lraPeriod(170) == 4412 && da7280::v2iFactor(13800, 19) == 197 && imax == 19,
          "factory: hand-computed period 4412, V2I 197, current step 19");
 }
+#endif
 
 int main() {
   testInit();
@@ -464,7 +479,9 @@ int main() {
   testNotBegun();
   testRetryDelay();
   testStopWritesDoNotShortCircuit();
+#ifdef RAILY_HAVE_FACTORY_CHECKS
   testFactoryAgrees();
+#endif
   if (failures) {
     printf("da7280: %d failure(s)\n", failures);
     return 1;

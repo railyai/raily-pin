@@ -8,7 +8,7 @@
 - **Corner variant b:** a continuous-curvature (G2) corner.
 - **Matte PLA.**
 - **Solid single-colour front:** the X is only the facet relief. Facets now tilt 7° (arms) / 12° (corners); no V-groove. The 3-zone front stays in the model as an option (`P.front_zones`).
-- **No OLED window:** the firmware does not use the OLED.
+- **No OLED window:** v1 covers the OLED by design. Firmware 0.2.10-qa and later draws on it; v2 has a window.
 - **RGB LED spot:** a thin skin of the lightest filament over the XIAO RGB LED, or a through-hole.
 - **Print in one go:** no glued parts or inserts; at most 4 spools including the body colour.
 - **Shipping colourways (locked):** V1 (Cotton White body, loop and button; Pastel Periwinkle front) and V5 (Cotton White body; Pastel Periwinkle front, loop and button). Facets 7° / 12°, 23.7 mm. The LED sits under a 0.3 mm Periwinkle skin in both, with no white dot (0.4 mm until 2026-09-28, see [LED skin](#shipping-colourways-v1-and-v5)). Every other scheme is archived.
@@ -685,8 +685,8 @@ part: print it in clear PETG only as a cover plate (at 0.5 mm it is hazy, not cl
 template. With `window='open'` the recess is left out. A 1.0 mm sheet needs `window_lip=(1.0, 1.1)` and
 `window_bezel=1.8` (0.4 mm left at the aperture edge).
 
-**Firmware.** v1 hides the OLED because the firmware does not use it. v2 is only useful with firmware that draws on
-the OLED. The panel's long side runs along the case, so the text must be rotated 90° in software (U8g2 `R1`/`R3`).
+**Firmware.** v1 hides the OLED by design. v2 needs firmware that draws on the OLED: 0.2.10-qa and later,
+including the 0.3.0 release. The panel's long side runs along the case, so the text must be rotated 90° in software (U8g2 `R1`/`R3`).
 
 **Printing.** The cover prints front up as in v1. The bezel hangs 1.4 mm over the plate and gets supports from the
 existing painted zone under the inner face; the well walls rise from the bezel and need none (their outer faces

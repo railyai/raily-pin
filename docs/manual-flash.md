@@ -56,14 +56,16 @@ disappears and the pin restarts. A message such as "The disk was not
 ejected properly" or "could not complete the copy" at this moment is
 normal: the board restarts as soon as it has the whole file.
 
-The LED blinks blue while the pin waits for your phone.
+The LED stays dark to save the battery; it flashes red only for a press
+or an error. Check the result in the next step: the app finds the pin.
 
 ## 5. Bind the pin
 
 1. Install the **Raily Device** app (link on devices.railyai.com), open it and
    sign in.
 2. Keep the pin next to the phone and press its button (or hold the button
-   in the app). The app finds the pin and binds it to your account.
+   in the app). Tap **Add this device** when the app shows the pin: that
+   binds it to your account.
 3. Tap **Pair** in the app and confirm the Bluetooth request on the iPhone.
    Until the pin is paired, its button presses do not reach the phone.
 4. Do this straight away: until a pin is bound, the first phone that

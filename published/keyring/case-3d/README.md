@@ -2,9 +2,11 @@
 
 > **Edition B (DA7280) download:** [`../raily-keyring-case.zip`](../raily-keyring-case.zip) — the current MakerWorld set: 3MF, all STLs, STEP, README and SHA256SUMS.
 
-> **Current case: [Checkpoint A](checkpoint-a/)** (frozen 2026-09-30; the Grove vibration module; tray 17.1, shelf
-> 17.2b, cover 18.2-G, pusher). Print new cases only from `checkpoint-a/`. The files below are the earlier v1.1 and v2
-> rounds, kept for the record.
+> **For the Grove vibration module: [Checkpoint A](checkpoint-a/)** (frozen 2026-09-30; tray 17.1, shelf 17.2b,
+> cover 18.2-G, pusher). The current kit uses the DA7280 motor: the Edition B set above. Note: that zip still holds
+> cover 18.1e-B; the cover the owner assembled on 2026-10-03 is 18.2-B (two posts shortened, one of them sat on the
+> DA7280's Qwiic plug), which is not in the zip yet. The files below are the earlier v1.1 and v2 rounds, kept for the
+> record.
 
 Published copy of the print files from the case model. The source and CAD scripts are in
 [`../../../case/`](../../../case/). These files are rebuilt from that source as **case v1.1** (2026-09-28, after the owner's test prints and fit

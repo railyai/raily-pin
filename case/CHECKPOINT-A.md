@@ -7,7 +7,8 @@ Status: **FROZEN 2026-09-30, official.** The owner accepted each part as printed
   loop end («произведение искусства — ИДЕАЛЬНО»).
 
 The geometry changes only with the owner's yes. Version B (the DA7280) builds from A with motor-specific changes only;
-it stays pre-validation until the DA7280 arrives.
+it stayed pre-validation until the DA7280 arrived. Update: the owner assembled the Edition B cover 18.2-B on
+2026-10-03 ([README «Edition B cover 18.2-B»](README.md#edition-b-cover-182-b-da7280-motor)).
 
 The print files (tray, shelf, cover, pusher), checksums and the assembly sheet are in
 [`../published/keyring/case-3d/checkpoint-a/`](../published/keyring/case-3d/checkpoint-a/). The git tag

@@ -1,12 +1,13 @@
 # Raily Pin
 
-> **2026-09-30:** the motor changed to the SparkFun DA7280 on a pre-soldered XIAO Sense, no soldering; this guide is the previous edition, a new one is coming; the parts list is [devices.railyai.com/build](https://devices.railyai.com/build)
+> **Current kit (since 2026-09-30):** a pre-soldered XIAO nRF52840 Sense and the SparkFun DA7280 vibration motor, no soldering. The assembly guide is the DA7280 edition ([`guide/`](guide/)); the parts list is on [devices.railyai.com/build](https://devices.railyai.com/build).
 
 Raily Pin is a small Bluetooth button for [Raily AI](https://railyai.com).
 You press it when someone nearby catches your eye; your phone sends the
 press, with your location, to your Raily agent, and the agent checks the
 people around you against what you are looking for. The pin itself knows
-nothing about you: it only counts presses and blinks its LED.
+nothing about you: it counts presses and answers with a vibration and a red
+LED flash.
 
 This repository holds everything a self-builder needs:
 
@@ -17,7 +18,7 @@ This repository holds everything a self-builder needs:
 | [`SKILL.md`](SKILL.md), [`AGENTS.md`](AGENTS.md) | The same instructions packaged for Claude Code, Codex and Cursor | Apache-2.0 |
 | [`tools/raily_pin_flash.py`](tools/raily_pin_flash.py) | The small script the agent runs; read it before you run it | Apache-2.0 |
 | [`docs/manual-flash.md`](docs/manual-flash.md) | Flashing by hand, without an agent | Apache-2.0 |
-| [`shell/`](shell/) | 3D models of the shell | CC BY-NC-SA 4.0 |
+| [`published/keyring/`](published/keyring/) | 3D print files of the case (the DA7280 edition: [`raily-keyring-case.zip`](published/keyring/raily-keyring-case.zip)) and the printable guide | CC BY-NC-SA 4.0 |
 | [`guide/`](guide/) | Assembly guide | CC BY-NC-SA 4.0 |
 
 Downloads (firmware images, the printable guide, the shell files) live on
@@ -32,9 +33,9 @@ served only from `https://download.railyai.com/pins/`.
 | Seeed Studio XIAO nRF52840 (plain) — supported | Works today. It will not get the future voice and gesture features, because it has no microphone or motion sensor. |
 | Seeed Studio XIAO Expansion Board | Required: it carries the button, the LiPo battery connector and the vibration motor connector. |
 | LiPo cell 602030 (3.7 V, ~300 mAh) with JST connector | Buy only from a seller that provides a UN38.3 test summary. |
-| Coin vibration motor (3 V) | Optional today; used from firmware 0.3.0. |
+| SparkFun Qwiic Haptic Driver DA7280 (ROB-17590), Grove cable 5 cm, Seeed Grove-Qwiic Hub, Qwiic cable 50 mm | The vibration motor, plugged into the Expansion Board's Grove UART port (D6/D7) — no soldering. Firmware 0.3.0 drives it; see [`case/motor-options.md`](case/motor-options.md). |
 | USB-C cable **with data lines** | Many cheap cables carry power only; the computer then never sees the board. |
-| The printed shell | See [`shell/`](shell/). Translucent filament lets the status LED show through. |
+| The printed shell | See [`published/keyring/`](published/keyring/). Translucent filament lets the status LED show through. |
 
 Other boards are not supported. The flashing tools refuse any board that
 does not identify itself as a XIAO nRF52840 over USB.
@@ -55,8 +56,9 @@ does not identify itself as a XIAO nRF52840 over USB.
    firmware only from `download.railyai.com`, checks its SHA-256 checksum,
    and refuses any board other than the XIAO nRF52840.
 4. When it is done, open the **Raily Device** app on your phone, sign in and
-   press the button. The app finds the pin and binds it to your account.
-   Then tap **Pair** and confirm on the iPhone, so the button works.
+   press the button. Tap **Add this device** when the app shows the pin:
+   that binds it to your account. Then tap **Pair** and confirm on the
+   iPhone, so the button works.
 
 Prefer to do it by hand? Follow [`docs/manual-flash.md`](docs/manual-flash.md).
 

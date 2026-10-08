@@ -8,7 +8,9 @@ of this repository.
 Known, documented limits of the current firmware (not vulnerabilities to
 report again):
 
-- The Raily GATT service uses open (Just Works) access without bonding.
-  Writes are rate-limited in firmware; bonded writes are planned.
+- The Raily GATT characteristics are declared open, but since firmware
+  0.2.18-qa presses and acknowledgements count only on a Bluetooth-bonded
+  link that the Raily server admitted, and restart or update entry needs a
+  pass from the server. The update bootloader is not signed yet.
 - A freshly flashed pin that nobody has bound yet can be bound by the first
   phone that connects to it. Bind your pin right after flashing it.

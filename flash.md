@@ -195,7 +195,8 @@ Tell the person, in their language:
 1. Install the **Raily Device** app (the link is on
    [devices.railyai.com](https://devices.railyai.com)), open it and sign in.
 2. Keep the pin close to the phone and **press the button** (or hold the
-   button in the app). The app finds the pin and binds it to their account.
+   button in the app). Tap **Add this device** when the app shows the pin:
+   that binds it to their account.
 3. Last step: when the app asks, tap **Pair** and confirm the Bluetooth
    request on the iPhone. Until the pin is paired, its button presses do
    not reach the phone.
