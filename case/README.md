@@ -173,7 +173,7 @@ python keyring_case.py stage2        # bodies -> print/ (STL per filament body +
 python guide_figures.py              # guide-figures/: overview, exploded, closed, hanging, step-1..6, step-5b, colour maps
 python closure_study.py              # preview/closure-*.png sections and print/closure-study.json (options A, B, C)
 python atlas_layers_p1.py <new_dir>  # atlas line-art layers of edition B (17.1 + 17.3c + 18.1e + DA7280) in the
-                                     # Keyring Air C3 format (../case-compact/atlas_layers.py): one SVG per part,
+                                     # same layer format as the site's other atlas views: one SVG per part,
                                      # assembled.svg, the visible-only masks, layers.json with exploded offsets, checks
 python bambu/build_bambu.py profiles && python bambu/build_bambu.py prepare && bash bambu/run.sh
                                      # Bambu Studio projects, see bambu/README.md

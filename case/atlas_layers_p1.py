@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Per-part line-art layers of the Keyring P1 (DIY kit, edition B: the DA7280 motor) for the atlas scroll-driven
-exploded view, in the format of the Keyring Air C3 layers (../case-compact/atlas_layers.py and
-atlas_visible_layers.py): one SVG per part on one shared canvas, camera and mm scale, each part at its assembled place,
+exploded view, in the same layer format as the site's other atlas views: one SVG per part on one shared canvas, camera and mm scale, each part at its assembled place,
 a white `class="fill"` silhouette under a `class="lines"` group, no text; assembled.svg (one hidden-line pass over the
 whole closed case); the visible-only layers for the site's colour masks; layers.json; composites and check images.
 
@@ -567,7 +566,7 @@ def main():
     # ---- layer SVGs
     meta = dict(version='P1-B', units='mm', px_per_mm=SCALE, canvas_px=[Wpx, Hpx],
                 camera=dict(kind='orthographic 3/4 iso', toward_eye=list(NV), screen_x=list(VX), screen_y=list(VY),
-                            note='keyring flat, face up, loop left, USB-C right (the C3 camera, unchanged)'),
+                            note='keyring flat, face up, loop left, USB-C right (the shared atlas camera, unchanged)'),
                 frame='case mm: X along the length (0 = USB-C end), Y up (0 = back), Z across (0 = side without the '
                       'button); the model frame of keyring_case.py moved by shift_mm',
                 shift_mm=R['meta']['shift_mm'], origin_px=list(to_px(0, 0)), explode_gap_mm=GAP,
