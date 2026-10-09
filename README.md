@@ -33,7 +33,7 @@ served only from `https://download.railyai.com/pins/`.
 | Seeed Studio XIAO nRF52840 (plain) — supported | Works today. It will not get the future voice and gesture features, because it has no microphone or motion sensor. |
 | Seeed Studio XIAO Expansion Board | Required: it carries the button, the LiPo battery connector and the vibration motor connector. |
 | LiPo cell 602030 (3.7 V, ~300 mAh) with JST connector | Buy only from a seller that provides a UN38.3 test summary. |
-| SparkFun Qwiic Haptic Driver DA7280 (ROB-17590), Grove cable 5 cm, Seeed Grove-Qwiic Hub, Qwiic cable 50 mm | The vibration motor, plugged into the Expansion Board's Grove UART port (D6/D7) — no soldering. Firmware 0.3.0 drives it; see [`case/motor-options.md`](case/motor-options.md). |
+| SparkFun Qwiic Haptic Driver DA7280 (ROB-17590) and one Grove-to-Qwiic cable, 100 mm (Adafruit 4528) | The vibration motor, plugged into the Expansion Board's Grove UART port (D6/D7) with that one cable — no soldering, no hub. Firmware 0.3.0 drives it; see [`case/motor-options.md`](case/motor-options.md). |
 | USB-C cable **with data lines** | Many cheap cables carry power only; the computer then never sees the board. |
 | The printed shell | See [`published/keyring/`](published/keyring/). Translucent filament lets the status LED show through. |
 

@@ -33,6 +33,26 @@ def wires(p0, p1, bend, r=0.42, axis=0, pitch=1.0):
     return out
 
 
+def wires_var(p0, p1, bends, offs, r=0.42):
+    """Four wires from p0 to p1 through the bend points. offs: the pitch vector (dx, dy, dz) at every point (len(bends) + 2
+    of them), or just two (at p0 and at p1, blended along the way); wire k sits at (k - 1.5) * pitch. So a Grove end
+    (2.0 mm pitch) can run into a Qwiic end (1.0 mm pitch), and the wires stay side by side through the bends."""
+    pts0 = [p0] + list(bends) + [p1]
+    n = len(pts0) - 1
+    if len(offs) == 2:
+        offs = [tuple(offs[0][i] * (1 - j / n) + offs[1][i] * j / n for i in range(3)) for j in range(n + 1)]
+    if len(offs) != len(pts0):
+        raise ValueError(f'offs must have 2 or {len(pts0)} entries, got {len(offs)}')
+    out = []
+    for k in range(4):
+        f = k - 1.5
+        pts = [cq.Vector(*[q[i] + f * o[i] for i in range(3)]) for q, o in zip(pts0, offs)]
+        path = cq.Workplane().spline(pts, includeCurrent=False)
+        prof = cq.Workplane(cq.Plane(origin=pts[0], normal=(pts[1] - pts[0]).normalized())).circle(r)
+        out.append(prof.sweep(path))
+    return out
+
+
 def motor_module(x, y, z):
     """Grove vibration motor module, 20 x 20 PCB (24 overall with the shroud), coin motor 10 x 3.4.
     Placed flat; its Grove shroud opening faces -z at the module's back edge."""
@@ -95,7 +115,8 @@ def flush_cutter(tip, direction=(1, 0, 0.3), thick=2.2):
     return [body.union(pivot)]
 
 
-# ---- the no-solder motor chain (2026-09-30): Grove UART port -> Grove 5 cm -> Grove-Qwiic hub -> Qwiic 50 mm -> DA7280
+# ---- the no-solder motor chain (owner, 2026-10-09): Grove UART port -> one Grove-to-Qwiic cable 100 mm (Adafruit 4528) -> DA7280
+# (2026-09-30 to 2026-10-08: Grove 5 cm -> Grove-Qwiic hub -> Qwiic 50 mm; qwiic_hub() stays for the old figures)
 # UART Grove shroud on the board: the one next to A0/D0 on the side-button edge (x 155.2..165.2 in the Seeed STEP)
 UART = dict(x=160.2, z_open=21.36, y_mid=1.2)
 

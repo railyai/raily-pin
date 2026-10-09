@@ -56,11 +56,11 @@ pend = lambda what: f'<img src="{PICK[what]}.jpg" alt="{what}">'
 two = lambda a, b: f'<div style="display:grid;grid-template-columns:1.4fr 1fr;gap:4mm;height:100%;align-items:center">{a}{b}</div>'
 out = pages[:]
 out[0] = out[0].replace('src="cover.jpg" alt="The finished Raily Keyring"', 'src="kc-cover-v1.png" alt="The finished Raily Keyring, V1"')
-# box page (2026-09-30, DA7280 edition): eight electronic parts, no soldering, then the case and its hardware
+# box page (DA7280 edition; owner 2026-10-09: one Grove-to-Qwiic cable, no hub, no foam tape): six electronic parts,
+# no soldering, then the case and its hardware
 _tiles = [('xiao-sense.jpg', 'XIAO nRF52840 Sense, pre‑soldered'), ('board-tile.svg', 'Expansion Board'), ('da7280.jpg', 'Haptic motor DA7280'),
-          ('qwiic-hub.jpg', 'Grove-Qwiic hub'), ('grove-cable-5cm.jpg', 'Grove cable, 5 cm'), ('qwiic-cable.jpg', 'Qwiic cable, 50 mm'),
-          ('battery.jpg', 'LiPo battery 602030'), ('usb.jpg', 'USB-C data cable'), ('kcb-closed-tile.png', 'Printed case'),
-          ('ring.jpg', 'Split ring, 25 mm'), ('screws-cs.svg', 'M2 × 16 countersunk screws and nuts, 4 each'), ('foam-tape.svg', 'Double-sided foam tape')]
+          ('grove-qwiic-cable.svg', 'Grove-to-Qwiic cable, 100 mm'), ('battery.jpg', 'LiPo battery 602030'), ('usb.jpg', 'USB-C data cable'),
+          ('kcb-closed-tile.png', 'Printed case'), ('ring.jpg', 'Split ring, 25 mm'), ('screws-cs.svg', 'M2 × 16 countersunk screws and nuts, 4 each')]
 _grid = '<div class="grid">' + ''.join(f'<div class="item"><img src="{f}" alt=""><span>{t}</span></div>' for f, t in _tiles) + '</div>'
 out[1], _n = re.subn(r'<div class="grid">.*?</div>(?=<div class="foot">)', _grid + '<p class="note" style="margin-top:4mm">No soldering: the XIAO comes with its pins, and every cable plugs in. Parts not to scale.</p>', out[1], flags=re.S)
 assert _n == 1
@@ -74,7 +74,7 @@ out.append(page(4, 'Onto the board',
     '<div class="row2 pins-b">' + col(1, img('hdr-module.svg', ''), 'The XIAO Sense comes with its pins already soldered. There is no soldering in this build.')
     + col(2, img('hdr-seat.svg', ''), 'Push it into the two inner rows of sockets, all the way down. USB-C at the edge without the screen.') + '</div>'
     + '<p class="note" style="margin-top:6mm">Before the cover goes on, the spring pins under the USB-C end lift the XIAO slightly. That is normal.</p>'))
-out.append(page(4, 'Motor and power', step(3, img('motor-chain.svg', 'Grove cable from the UART port to the hub, Qwiic cable from the hub to the motor'), 'Plug the 5 cm Grove cable into the port marked UART and into the hub. Then the Qwiic cable from the hub into the motor.', 'Grove and Qwiic plugs fit one way only. On the bench the hub and the motor lie loose; in the case the hub sits on the screen and the motor on its shelf (see «Into the case»).', 'wide')
+out.append(page(4, 'Motor and power', step(3, img('motor-chain.svg', 'One Grove-to-Qwiic cable from the UART port to the motor'), 'Plug the cable’s Grove end into the port marked UART and its small Qwiic end into the motor.', 'Both plugs fit one way only. On the bench the motor lies loose; in the case it sits on its shelf (see «Into the case»).', 'wide')
                + step(4, img('usb-nobatt.svg', 'USB-C into the XIAO, battery unplugged'), 'Connect USB-C to your computer. No battery yet.', 'Use a cable that carries data. The battery waits until page 8.', 'short')))
 out.append(page(5, 'Flash', '<div class="phrase"><p class="note">Open Claude Code, Codex or Cursor and paste:</p><q>Flash my Raily Pin using <a href="https://github.com/railyai/raily-pin">https://github.com/railyai/raily-pin</a></q></div>'
                + step(5, pend('laptop with the USB-C cable'), 'Your AI assistant installs the firmware and checks it.', 'It explains each step and asks before it writes to the board. No assistant? See «Flash by hand» at the back.', 'short')))
@@ -101,12 +101,12 @@ out.append(page(10, 'The cover',
     + '<div class="row3 tall">' + col(11, '<div style="display:flex;flex-direction:column;gap:3mm;width:100%;height:100%"><div style="height:24%">' + img('kcb-rack.svg', 'The dowel rack, rows S, M and L') + '</div><div style="flex:1;min-height:0">' + img('kcb-face-dowels.svg', 'Dowels into the face') + '</div></div>', 'Face down, its back up: twist a dowel off the rack and press it into each hole 1–9 until it stops. Your thumb is enough; the pusher can help. Keep the spare dowels.')
     + col(12, img('kcb-frame-on.svg', 'Frame onto the dowels'), 'Frame on, its pillars up, loop end to loop end: its holes over the nine dowels. Press with your palm over each dowel until it sits flat, with no gap at the loop end.')
     + col(13, img('kcb-nuts.svg', 'Nuts into the pillars'), 'Leave the cover face down. Slide an M2 nut into the side slot of each of the four pillars until it lines up with the hole: check with a screw tip.') + '</div>'))
-out.append(page(11, 'Into the case', '<p class="note" style="margin-top:0">Before you start: switch OFF, then unplug the battery, the Grove and the Qwiic cables.</p>'
+out.append(page(11, 'Into the case', '<p class="note" style="margin-top:0">Before you start: switch OFF, then unplug the battery and the motor cable.</p>'
     + '<div class="row3">' + col(14, img('kcb-step-6a.svg', 'Battery into its bay'), 'Battery into its bay, the lead up through the notch toward the board. Never clamp, tape or glue it: it must stay replaceable.')
     + col(15, img('kcb-step-6b.svg', 'Shelf over the battery'), 'Shelf onto its ledges over the battery, its arrow toward the loop.')
-    + col(16, img('kcb-step-6c.svg', 'Motor board on the shelf'), 'Motor board onto its seat on the shelf, the round motor up. The ringed socket takes the Qwiic cable.') + '</div>'))
-out.append(page(12, 'Board, hub and cover', '<div class="row3 tall">' + col(17, img('kcb-step-7.svg', 'Board'), 'Board onto the four standoffs, USB-C in the end window. Plug in the battery lead, switch still OFF.')
-    + col(18, img('kcb-step-8.svg', 'Hub and cables'), 'Hub onto the board’s screen with a square of foam tape. Grove cable from the UART port into the hub, Qwiic cable from the hub into the motor board.')
+    + col(16, img('kcb-step-6c.svg', 'Motor board on the shelf'), 'Motor board onto its seat on the shelf, the round motor up. The ringed socket takes the cable’s Qwiic end.') + '</div>'))
+out.append(page(12, 'Board, cable and cover', '<div class="row3 tall">' + col(17, img('kcb-step-7.svg', 'Board'), 'Board onto the four standoffs, USB-C in the end window. Plug in the battery lead, switch still OFF.')
+    + col(18, img('kcb-step-8.svg', 'Motor cable'), 'Cable’s Grove end into the UART port, its Qwiic end into the ringed socket on the motor board. Lay the spare length in a loose loop over the board. Nothing is taped to the screen.')
     + col(19, img('kcb-step-9.svg', 'Cover onto the tray'), 'Turn the cover face up and set it on the tray: USB-C end first, then press the loop end down until the rim sits flush.') + '</div>'))
 out.append(page(13, 'Screws and done', '<div class="row3 tall done3">' + col(20, img('kcb-step-10.svg', 'Screws from the back'), 'Turn it over: four M2 × 16 countersunk screws from the back into the pillar nuts. Snug, not tight.')
     + col2(img('kcb-closed.svg', 'The closed keyring'), 'Switch ON with a pen tip through the slot on the other long side. Press the side button to use it. The status light shines through the face near the USB-C end.')

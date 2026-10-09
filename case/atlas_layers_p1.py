@@ -7,9 +7,10 @@ whole closed case); the visible-only layers for the site's colour masks; layers.
 Edition B: tray 17.1 (`version_p('v1.3')`), shelf 17.3c (`shelf_17_3c()`, the DA7280 raised on pads, the arrow
 deboss), cover 18.1e (`version_p('v1.3-p18.1e')`: frame + face, 9 round dowels), the DA7280 board as placed by
 17.3c (`da7280_place`), the XIAO nRF52840 Sense on the Expansion Board (Seeed STEPs via `board_parts()`), the
-Grove-Qwiic hub (`guide/cad/parts.py`) on the display, the 602030 cell envelope (`lipo()`), 4 M2 x 16 countersunk
-screws and 4 M2 nuts (`screws()`). The part codes (17.1 on the tray, 18.1e-3 on the face) are left out, as in
-guide_render_b.py; no part geometry changes. The breakaway frame tie (a print aid) and the cables are not drawn.
+motor cable (owner 2026-10-09: one Grove-to-Qwiic cable, 100 mm, Adafruit 4528, UART port -> J1, no hub; the run of
+guide_figures_da7280.motor_cable()), the 602030 cell envelope (`lipo()`), 4 M2 x 16 countersunk screws and 4 M2 nuts
+(`screws()`). The part codes (17.1 on the tray, 18.1e-3 on the face) are left out, as in guide_render_b.py; no part
+geometry changes. The breakaway frame tie (a print aid) and the battery lead are not drawn.
 
 Camera: C3's (orthographic 3/4 iso, keyring flat, face up, loop LEFT, USB-C RIGHT, seen from above and from the long
 side without the side button). Every part is moved by one translation into C3's frame: X along the length (0 = the
@@ -86,9 +87,9 @@ LAYERS = [
      'keyring_case.da7280_place() via shelf_17_3c() (the DA7280 dict: board, LRA, J1, J2) + its 3 holes (Ø3.048)'),
     ('pcb-xiao-expansion', +1, 'XIAO nRF52840 Sense on its 2 x 7 headers on the XIAO Expansion Board',
      'keyring_case.board_parts(): Seeed STEPs (expansion.step, xiao.step) + 2 x 7 headers (guide/cad/render.py)'),
-    ('hub-grove-qwiic', +1, 'Seeed Grove-Qwiic Hub (103020292) on the display',
-     'guide/cad/parts.py qwiic_hub() at the guide B place (x 141.3-166.7, z -8.6..9.2, on the display at y -0.6), '
-     'turned 180 deg so its Grove socket faces the UART edge (assumption)'),
+    ('cable-grove-qwiic-100', +1, 'Grove-to-Qwiic cable, 100 mm (Adafruit 4528): UART port to the DA7280 J1, the slack '
+     'in a loose loop over the board',
+     'guide_figures_da7280.motor_cable(): a schematic run (Ø1.2 tube) and the J1 plug (owner 2026-10-09)'),
     ('nuts-m2', +1, '4 M2 nuts (ISO 4032), seated in the frame pillar slots when closed',
      'keyring_case.screws(): the nuts'),
     ('frame-18.1e-B', +1, 'cover frame 18.1e (edition B): lip ring, 0.8 plate, 4 screw pillars, dowel posts',
@@ -119,16 +120,8 @@ def build_parts():
     for hx, hz in inf['holes']:
         board = board.cut(K._cyl(hx, hz, K.DA7280['hole_d'] / 2, -50, 50))
     bp = K.board_parts()
-    sys.path.insert(0, K.CAD)
-    cwd = os.getcwd()
-    os.chdir(K.CAD)
-    try:
-        import parts as PT
-    finally:
-        os.chdir(cwd)
-    hub, _ = PT.qwiic_hub(141.3, -0.6, -8.6)
-    hc = (141.3 + 25.4 / 2, 0.0, -8.6 + 17.8 / 2)
-    hub = [w.rotate(hc, (hc[0], 1.0, hc[2]), 180) for w in hub]
+    import guide_figures_da7280 as GB
+    cable, plug = GB.motor_cable(inf['place'])
     sc = K.screws(p, info)
     split = info['split']
     dowels = []
@@ -149,7 +142,7 @@ def build_parts():
         'shelf-17.3c': {'': [S]},
         'da7280-lra': {'': [board, comps['lra'], comps['j1'], comps['j2']]},
         'pcb-xiao-expansion': {'': [bp['expansion'], bp['headers'], bp['xiao']]},
-        'hub-grove-qwiic': {'': hub},
+        'cable-grove-qwiic-100': {'': [cable, plug]},
         'nuts-m2': {'': sc[1::2]},
         'frame-18.1e-B': {'': [b['frame']]},
         'dowels-9': {'': dw},
@@ -474,9 +467,13 @@ def main():
     OUT = os.path.abspath(ARGS[0])
     if os.path.isdir(OUT) and os.listdir(OUT):
         raise SystemExit(f'{OUT} has files: give a new folder (this script never overwrites)')
+    R = None
     if CACHE and os.path.exists(CACHE):
         R = pickle.load(open(CACHE, 'rb'))
-    else:
+        if set(R.get('layers', {})) != {lid for lid, *_ in LAYERS}:     # a cache from another layer set (the hub)
+            print(f'{CACHE}: its layers are not the current LAYERS, so the CAD stage runs again', flush=True)
+            R = None
+    if R is None:
         R = cad_stage()
         if CACHE:
             pickle.dump(R, open(CACHE, 'wb'))
@@ -571,7 +568,7 @@ def main():
                       'button); the model frame of keyring_case.py moved by shift_mm',
                 shift_mm=R['meta']['shift_mm'], origin_px=list(to_px(0, 0)), explode_gap_mm=GAP,
                 explode_gap_overrides_mm=GAPS,
-                explode_order='back to front: tray, cell, shelf, DA7280, main board, hub, nuts, frame, dowels, face; '
+                explode_order='back to front: tray, cell, shelf, DA7280, main board, motor cable, nuts, frame, dowels, face; '
                               'screws from the back (down)',
                 parts=[])
     for k, (lid, d, what, src) in enumerate(LAYERS):
@@ -698,7 +695,7 @@ def main():
         'any order: tray in the back colour, face in the face colour, the board in a dark colour (openings.svg is the '
         'same pixels as the board tile). 0-tray-17.1-loop-visible.svg is an overlay inside the tray tile: paint it '
         'over the tray in the face colour for the V5 colourway. The frame (face colour), the nuts, dowels, shelf, '
-        'cell, DA7280, hub and screws are not seen in the closed case (fully_hidden_when_closed). For the explode keep '
+        'cell, DA7280, motor cable and screws are not seen in the closed case (fully_hidden_when_closed). For the explode keep '
         'the full layers (parts list), since a moved part shows its hidden pieces. One camera, one visible set.')
     json.dump(meta, open(os.path.join(OUT, 'layers.json'), 'w'), indent=1)
 

@@ -8,10 +8,10 @@ Edition A's step-8 is the Grove cable from the main board's UART port down into 
 
 Same renderer and style as guide_figures.py (one HLR pass, the part added in the step dark and lifted, the rest grey,
 no text in any raster). Figures for stack.md: step-5 (the battery into the bay), step-7 (the main board onto the
-standoffs + the battery lead), step-8 (the hub onto the display, Grove UART -> hub, Qwiic hub -> motor board),
-step-10 (the 4 screws from the back), closed, hanging. The DA7280 and the hub are neutral placeholder boxes (the
-DA7280 25.4 x 29.2 with its LRA Ø10 x 4 on top, in its 17.3b place; the hub 25.4 x 17.8 on the display); no dowels,
-no motor-seat or pin detail (the 17.3b pins are cut off at the plate).
+standoffs + the battery lead), step-8 (owner 2026-10-09: one Grove-to-Qwiic cable, 100 mm, Adafruit 4528, from the
+UART port into the motor board's J1, no hub, nothing stuck to the display; see motor_cable()), step-10 (the 4 screws
+from the back), closed, hanging. The DA7280 is a neutral placeholder box (25.4 x 29.2 with its LRA Ø10 x 4 on top, in
+its 17.3b place); no dowels, no motor-seat or pin detail (the 17.3b pins are cut off at the plate).
 """
 import os
 import sys
@@ -33,6 +33,26 @@ def tube(pts, r):
     for q in pts[1:-1]:
         w = w.union(cq.Workplane().add(cq.Solid.makeSphere(r, cq.Vector(*q), angleDegrees1=-90, angleDegrees2=90)))
     return w
+
+
+def motor_cable(pl):
+    """The motor cable in the closed case (owner 2026-10-09): one Grove-to-Qwiic cable, 100 mm (Adafruit 4528), from the
+    UART port straight into the DA7280's J1, no hub. About 70 mm is drawn from the UART socket to J1; the plugs take the
+    rest. The slack lies in a loose loop over the board (the owner's fit test of 2026-10-02: over the screen, not down
+    toward the XIAO); nothing is stuck to the screen. The run rises over the 2 x 4 pins to the raised J1.
+    pl: shelf_17_3c()'s info['place']. Only the J1 end and the plug follow pl: the other route points are fixed to the
+    current 17.3c placement and the board, so update them if either moves. Returns (cable, J1 plug) as Workplanes."""
+    j1z = pl['zlo'] + 16.51
+    jy = pl['top'] + 1.5
+    pts = [(160.2, 3.6, 17.2), (160.2, 6.0, 15.5), (155.0, 2.4, 10.5), (146.0, 1.0, 5.0), (144.0, 1.0, -4.5),
+           (151.0, 1.0, -8.5), (161.0, 1.2, -4.5), (166.2, 1.6, 2.0), (169.0, 5.0, 4.0), (172.0, 9.0, j1z),
+           (pl['bx0'] + 0.48 - 3.0, jy, j1z)]
+    plug = K._box(pl['bx0'] + 0.48 - 3.0, pl['bx0'] + 0.48, pl['top'] + 0.3, pl['top'] + 3.1, j1z - 2.5, j1z + 2.5)
+    # one smooth run: a Ø1.2 circle swept along a spline through the points
+    vs = [cq.Vector(*q) for q in pts]
+    path = cq.Workplane().spline(vs, includeCurrent=False)
+    run = cq.Workplane(cq.Plane(origin=vs[0], normal=(vs[1] - vs[0]).normalized())).circle(0.6).sweep(path)
+    return run, plug
 
 
 def main_a():
@@ -120,7 +140,6 @@ def main(out=None, edition='B'):
     da = K._box(pl['bx0'], pl['bx0'] + 25.4, pl['yb'], pl['top'], pl['zlo'], pl['zlo'] + 29.2)
     lx, lz = pl['bx0'] + 12.7, pl['zlo'] + 29.21 - 23.09
     da = da.union(K._cyl(lx, lz, 5.0, pl['top'] - 0.01, pl['top'] + 4.0))
-    hub = K._box(141.3, 166.7, -0.6, 1.0, -8.6, 9.2)
     bp = K.board_parts()
     board = [bp['expansion'], bp['headers'], bp['xiao']]
     cell = K.lipo(p17)
@@ -141,20 +160,16 @@ def main(out=None, edition='B'):
         return K._cyl(x, z, 1.5, y0, y0 + 5.0)
     seated = [dowel(x, z, split - depth[(x, z)]) for x, z in dw]
     lifted = [dowel(x, z, split + 6.0) for x, z in dw]
-    # cables (schematic runs, as stack.md describes them); the Qwiic run rises over the 2 x 4 pins to the raised J1
+    # cables (schematic runs): the battery lead, and the motor cable (motor_cable(), also used by atlas_layers_p1.py)
     lead = tube([(183.0, 0.3, 10.9), (180.5, 1.0, 10.9), (178.0, 1.6, 11.0), (176.9, 1.8, 11.0)], 0.45)
-    grove = tube([(160.2, 3.6, 17.2), (160.2, 6.0, 15.5), (162.5, 5.2, 11.0), (165.0, 3.0, 8.0), (165.5, 1.6, 6.5)], 0.6)
-    j1z = pl['zlo'] + 16.51
-    jy = pl['top'] + 1.5
-    qwiic = tube([(166.2, 1.6, 2.0), (169.0, 5.0, 4.0), (172.0, 9.0, j1z), (pl['bx0'] + 0.48 - 3.0, jy, j1z)], 0.55)
-    plug = K._box(pl['bx0'] + 0.48 - 3.0, pl['bx0'] + 0.48, pl['top'] + 0.3, pl['top'] + 3.1, j1z - 2.5, j1z + 2.5)
+    cable, plug = motor_cable(pl)
     SIDE, BACK, TOP = (0.25, 0.5, 1.0), (0.35, -1.0, 0.8), (0.3, 1.0, 0.55)
     base = tray + [shelf, da]
     G.figure('step-5', [('new', G.moved([cell], 14), 'obj'), ('rest', tray, 'ctx')], view=SIDE)
     G.figure('step-6', [('new', G.moved([shelf, da], 14), 'obj'), ('rest', tray + [cell], 'ctx')], view=SIDE)
     G.figure('step-7', [('new', G.moved(board, 16) + [lead], 'obj'), ('rest', base + [cell], 'ctx')], view=SIDE)
-    G.figure('step-8', [('new', G.moved([hub], 8) + [grove, qwiic, plug], 'obj'),
-                        ('rest', base + [cell] + board + [lead], 'ctx')], view=SIDE)
+    G.figure('step-8', [('new', [cable, plug], 'obj'),                 # from above (the close-ups' view): the whole run shows
+                        ('rest', base + [cell] + board + [lead], 'ctx')], view=(0.2, 1, 0.35))
     # new order step 1: the dowels into the frame (parting face up); step 4: the face onto them
     bx = G.figure('step-1', [('new', lifted, 'obj'), ('rest', [frame], 'ctx')], view=TOP)
     hole_marks('step-1', bx, TOP, G.UP, {i + 1: (x, split, z) for i, (x, z) in enumerate(dw)})
@@ -175,7 +190,7 @@ def main(out=None, edition='B'):
     def tilt(w):
         return w.rotate((usb_x, split, 0), (usb_x, split, 1), ang).translate((0, 1.5, 0))
     G.figure('step-9', [('new', [tilt(face), tilt(frame)] + [tilt(n) for n in nuts_], 'obj'),
-                        ('rest', tray + [shelf, da, cell] + board + [hub], 'ctx')], view=SIDE)
+                        ('rest', tray + [shelf, da, cell] + board + [cable, plug], 'ctx')], view=SIDE)
     G.figure('step-10', [('new', G.moved(screws_, -12), 'obj'), ('rest', tray + cover, 'ctx')], view=BACK)
     G.figure('closed', [('case', tray + cover + screws_, 'obj')])
     lp = info17['loop']

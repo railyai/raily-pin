@@ -24,21 +24,20 @@ def scene(name, groups, styles, V, label_, overlay='', crop=None, base=0.0024, p
     R.fill_png(groups, V, box, pxmm, f'{out}/{name}-fill.png', )
     open(f'{out}/{name}.svg', 'w').write(svg); print(name, 'ok', flush=True)
 
-# the no-solder motor chain on the bench (2026-09-30): Grove 5 cm from the UART port (D6/D7) to the Grove-Qwiic hub,
-# Qwiic 50 mm from the hub to the DA7280. On the bench the hub and the motor lie loose in front of the board.
+# the no-solder motor chain on the bench (owner, 2026-10-09): one Grove-to-Qwiic cable, 100 mm (Adafruit 4528), from the
+# UART port (D6/D7) straight into the DA7280. No hub. On the bench the motor lies loose in front of the board.
 YB = -6.4                                                          # bench level: the board's lowest part
-HUB, hub = PT.qwiic_hub(150.3, YB, 44.0)
 MOT, mot = PT.da7280_module(191.0, YB, 36.0)
 pu, back_u = PT.plug_grove(PT.UART['x'], PT.UART['y_mid'], PT.UART['z_open'] - 3.0, dirz=1)
-gh = hub['grove']; ph, back_h = PT.plug_grove(gh[0], gh[1], gh[2] + 3.0, dirz=-1)
-grove5 = PT.wires(back_u, back_h, ((back_u[0] + back_h[0]) / 2 - 3, max(back_u[1], back_h[1]) + 7.0, (back_u[2] + back_h[2]) / 2))
-qh = hub['qwiic_right']; pq1, bq1 = PT.plug_qwiic(qh[0] - 2.0, qh[1], qh[2], dirx=1)
 qm = mot['qwiic_left']; pq2, bq2 = PT.plug_qwiic(qm[0] + 2.0, qm[1], qm[2], dirx=-1)
-qwiic50 = PT.wires(bq1, bq2, ((bq1[0] + bq2[0]) / 2, bq1[1] + 7.0, (bq1[2] + bq2[2]) / 2 + 6), r=0.3, axis=2)
-CHAIN = HUB + MOT + [pu, ph, pq1, pq2] + grove5 + qwiic50
-GBEND = ((back_u[0] + back_h[0]) / 2 - 3, max(back_u[1], back_h[1]) + 7.0, (back_u[2] + back_h[2]) / 2)
-QBEND = ((bq1[0] + bq2[0]) / 2, bq1[1] + 7.0, (bq1[2] + bq2[2]) / 2 + 6)
-HUBC = (gh[0], YB + 1.6, gh[2] + 12)
+# about 100 mm between the plugs: out of the port, a wide bow toward the bench front, then into the motor's left socket
+B1 = (back_u[0] + 1.0, back_u[1] + 3.0, back_u[2] + 12.0)
+B2 = (back_u[0] - 4.0, YB + 1.8, back_u[2] + 34.0)
+B3 = (bq2[0] - 16.0, YB + 1.8, bq2[2] + 8.0)
+cable = PT.wires_var(back_u, bq2, (B1, B2, B3), ((2.0, 0, 0), (0, 0, 1.0)), r=0.36)
+CHAIN = MOT + [pu, pq2] + cable
+CBEND = B2                                                         # a point on the cable for its callout
+back_h = B1                                                        # the way the cable leaves the port (button scene stub)
 LRA = (191.0 + 12.7, YB + 1.6 + 3.2, 36.0 + 29.2 - 6.1)            # top of the motor (LRA) on the DA7280
 
 if 'motor' in which:
@@ -50,13 +49,12 @@ if 'motor' in which:
                 f'<text x="{tx:.2f}" y="{ty:.2f}" font-family="Inter Guide, sans-serif" font-size="{size}" font-weight="700" fill="#1d1d1f" text-anchor="{anchor}">{t}</text>')
     mid = lambda a, b: tuple((a[i] + b[i]) / 2 for i in range(3))
     ov = (ring((PT.UART['x'], 1.2, PT.UART['z_open']), A, 4.5) + call((PT.UART['x'], 3.6, PT.UART['z_open'] - 4.0), 'UART port', -4, -26, 'end') +
-          call(GBEND, 'Grove cable 5 cm', 14, -46, 'start') + call(HUBC, 'Grove-Qwiic hub', 4, 22, 'start') +
-          call(QBEND, 'Qwiic cable 50 mm', 4, -18, 'start') + call(LRA, 'Haptic motor DA7280', 12, 12, 'start'))
+          call(CBEND, 'Grove-to-Qwiic cable 100 mm', 8, 12, 'start') + call(LRA, 'Haptic motor DA7280', 12, 12, 'start'))
     grp = [('rest', [REST, INNER, HS, XS]), ('chain', CHAIN)]
     res = R.project_groups(grp, A); st = {'rest': R.CTX, 'chain': R.OBJ}
     _, g = R.styled_svg(res, st, '', pad=0)
     crop = (g[0] - 12, g[1] - 30, g[0] + g[2] + 56, g[1] + g[3] + 16)
-    svg, box = R.styled_svg(res, st, 'The motor chain: Grove cable from the UART port to the hub, Qwiic cable from the hub to the DA7280', png='motor-chain-fill.png', overlay=ov, crop=crop)
+    svg, box = R.styled_svg(res, st, 'The motor chain: one Grove-to-Qwiic cable from the UART port to the DA7280', png='motor-chain-fill.png', overlay=ov, crop=crop)
     R.fill_png(grp, A, box, 10, f'{out}/motor-chain-fill.png')
     open(f'{out}/motor-chain.svg', 'w').write(svg); print('motor-chain ok')
 
@@ -151,7 +149,7 @@ if 'overview' in which:
     ov = (call(USB, 'USB-C', -14, 18, 'end') + call(LED, 'Light', -3, 30, 'end') + call(SW, 'Power switch', -6, -16, 'end') +
           call(XI, 'XIAO Sense', 6, -26, 'middle') + call(BT, 'Button · side press', 36, -40, 'start') +
           call(BAT, 'Battery', 6, -16, 'start') +
-          call(HUBC, 'Grove-Qwiic hub', 12, 26, 'start') + call(LRA, 'Motor DA7280', 14, 6, 'start'))
+          call(LRA, 'Motor DA7280', 14, 6, 'start'))
     grp = [('board', [REST, INNER, HS, XS] + PL), ('motor', CHAIN), ('bat', [bat] + bw)]
     res = R.project_groups(grp, A)
     st = {'board': R.OBJ, 'motor': R.OBJ, 'bat': R.OBJ}
@@ -160,3 +158,14 @@ if 'overview' in which:
     svg, box = R.styled_svg(res, st, 'The keyring parts connected on the bench, each one named', png='overview-fill.png', overlay=ov, crop=crop)
     R.fill_png(grp, A, box, 10, f'{out}/overview-fill.png')
     open(f'{out}/overview.svg', 'w').write(svg); print('overview ok')
+
+if 'cable' in which:
+    # box tile (owner, 2026-10-09): the Grove-to-Qwiic cable, 100 mm (Adafruit 4528): Grove plug left, Qwiic plug right
+    gp, gb = PT.plug_grove(0.0, 0.0, 0.0, dirz=1)                 # Grove plug, wires leave along +z
+    qp, qb = PT.plug_qwiic(62.0, 0.0, 44.0, dirx=-1)                # Qwiic plug, wires leave along -x
+    tw = PT.wires_var(gb, qb, ((1.0, 0.0, 22.0), (24.0, 0.0, 30.0), (44.0, 0.0, 44.0)),
+                      ((2.0, 0, 0), (0.9, 0, -1.6), (0.6, 0, -1.4), (0.6, 0, -0.9), (0, 0, -1.0)), r=0.4)
+    _, g = R.styled_svg(R.project_groups([('cable', [gp, qp] + tw)], A), {'cable': R.OBJ}, '', pad=1.5)
+    cx, cy, w = g[0] + g[2] / 2, g[1] + g[3] / 2, g[2]          # pad to the 3:2 of the other box tiles
+    scene('grove-qwiic-cable', [('cable', [gp, qp] + tw)], {'cable': R.OBJ}, A, 'Grove-to-Qwiic cable, 100 mm',
+          crop=(cx - w / 2, cy - w / 3, cx + w / 2, cy + w / 3), pxmm=10)

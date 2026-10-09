@@ -1,5 +1,22 @@
 # DA7280 edition (2026-09-30)
 
+## One motor cable (owner, 2026-10-09)
+
+Source: the owner's decision of 2026-10-09, relayed by the firmware lead. The Grove-Qwiic hub (Seeed 103020292), the 5 cm Grove cable and the 50 mm Qwiic cable are out. The chain is Grove UART port (D6/D7) → one Grove-to-Qwiic cable, 100 mm (Adafruit 4528) → DA7280. The long cable fits in the case, nothing is stuck to the display, and the 5 cm rule is lifted for this cable. Electrically nothing changes: same pins, same firmware.
+
+| Page | Change | Check |
+| --- | --- | --- |
+| 2 box | 12 tiles → 9. Out: hub, Grove cable 5 cm, Qwiic cable 50 mm, foam tape (its only use was the hub on the screen). In: the Grove-to-Qwiic cable, 100 mm, a CAD tile (`grove-qwiic-cable.svg`, `scenes3.py cable`). Electronic parts 8 → 6: XIAO Sense, Expansion Board, DA7280, the cable, LiPo, USB-C cable | Looked at |
+| 3 overview | CAD: the hub is gone, one cable from the UART port to the DA7280 | Looked at; labels ≥ 9 pt (render.mjs) |
+| 5 motor | `motor-chain.svg`: UART ring, «Grove-to-Qwiic cable 100 mm», «Haptic motor DA7280». The USB step shows the same cable | Looked at |
+| 7 button | `button-d1.svg` regenerated: the cable stub leaves the UART plug toward the motor | Looked at |
+| 12 into the case | «unplug the battery and the motor cable»; step 16 «takes the cable's Qwiic end» | Text |
+| 13 board, cable and cover | Step 18 (`kcb-step-8`): one cable from the UART port into J1, the slack in a loose loop over the board (the owner's fit test of 2026-10-02: over the screen, not down toward the XIAO), no tape. Step 19 (`kcb-step-9`) no longer shows the hub | Looked at |
+
+**Pins, end to end (sources):** Grove UART plug pin 1 (yellow) = RX, pin 2 = TX, from the base board (Seeed Grove System wiki); XIAO nRF52840 `PIN_SERIAL1_RX 7`, `PIN_SERIAL1_TX 6` (Seeed core `variant.h`); Zephyr's Expansion Board shield page: pin 6 = Grove UART TX, pin 7 = RX. Adafruit 4528 is a Grove I2C cable (pin 1 = SCL, pin 2 = SDA): yellow = SCL, blue = SDA. So yellow = D7 = SCL, blue = D6 = SDA, matching the firmware (`RAILY_HAPTIC_SDA_PIN D6`, `RAILY_HAPTIC_SCL_PIN D7`). The 4528 has no white wire. The Expansion Board schematic's net list was not read.
+
+The rest of this file is the 2026-09-30 record.
+
 Source: the 3D printing lead's change on 2026-09-30, relayed by the atlas /build session. The Grove Vibration Motor and its 20 cm cable are out. The new chain is Grove UART port (D6/D7) → Grove 5 cm (Seeed 110990036) → Grove-Qwiic Hub (Seeed 103020292, on the display with foam tape) → Qwiic 50 mm (SparkFun PRT-17260) → Qwiic Haptic Driver DA7280 (SparkFun ROB-17590). The board is the pre-soldered XIAO nRF52840 Sense (102010632).
 
 | Page | Change | Check |
