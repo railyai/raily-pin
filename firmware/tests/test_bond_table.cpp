@@ -26,11 +26,11 @@ static void testAdmitRevoke() {
   addr(a, 0x10);
   addr(b, 0x20);
   bool evicted = true;
-  expect(table.admit(a, 1, 0xAAAA, NULL, &evicted) && !evicted && table.count == 1, "first admission");
-  expect(!table.admit(a, 1, 0xBBBB, NULL, &evicted) && table.count == 1, "admitting again changes nothing");
-  expect(table.phones[0].firmwareHash == 0xAAAA, "a repeat keeps the stored build hash");
+  expect(table.admit(a, 1, NULL, &evicted) && !evicted && table.count == 1, "first admission");
+  expect(!table.admit(a, 1, NULL, &evicted) && table.count == 1, "admitting again changes nothing");
+  expect(table.phones[0].retiredHash == 0, "the retired build-hash field is written 0");
   expect(table.contains(a) && !table.contains(b), "contains only the admitted address");
-  expect(table.admit(b, 1, 0xAAAA, NULL, NULL) && table.phones[1].seq > table.phones[0].seq,
+  expect(table.admit(b, 1, NULL, NULL) && table.phones[1].seq > table.phones[0].seq,
          "admissions are ordered");
   expect(table.revoke(a) && !table.contains(a) && table.contains(b) && table.count == 1,
          "a fresh pairing revokes only that phone");
@@ -44,17 +44,17 @@ static void testAdmitEvictsOldest() {
   uint8_t a[6];
   for (uint8_t i = 0; i < BOND_TABLE_MAX; i++) {
     addr(a, (uint8_t)(0x40 + 8 * i));
-    table.admit(a, 1, 1, NULL, NULL);
+    table.admit(a, 1, NULL, NULL);
   }
   uint8_t second[6];
   addr(second, 0x48);
   table.revoke(second);
-  table.admit(second, 1, 1, NULL, NULL);  // now the newest
+  table.admit(second, 1, NULL, NULL);  // now the newest
   uint8_t ninth[6];
   addr(ninth, 0xF0);
   AdmittedPhone gone = {};
   bool evicted = false;
-  expect(table.admit(ninth, 1, 1, &gone, &evicted) && evicted && table.count == BOND_TABLE_MAX,
+  expect(table.admit(ninth, 1, &gone, &evicted) && evicted && table.count == BOND_TABLE_MAX,
          "a ninth phone evicts one");
   uint8_t first[6];
   addr(first, 0x40);
@@ -101,15 +101,15 @@ static void testEvictions() {
   expect(selectBondEvictions(files, 8, table, NULL, 8, out, 12) == 0, "at the cap nothing goes");
 
   // Owner phones 1 and 5 admitted, the rest strangers; the current link is 3.
-  table.admit(files[5], 1, 1, NULL, NULL);
-  table.admit(files[1], 1, 1, NULL, NULL);
+  table.admit(files[5], 1, NULL, NULL);
+  table.admit(files[1], 1, NULL, NULL);
   size_t n = selectBondEvictions(files, 11, table, files[3], 8, out, 12);
   expect(n == 3 && out[0] == 0 && out[1] == 2 && out[2] == 4, "strangers go first, the current link stays");
 
   // Eight admitted phones plus the current stranger link: a stranger pairing
   // again and again never evicts an owner's phone...
   BondTable eight = emptyTable();
-  for (uint8_t i = 0; i < 8; i++) eight.admit(files[i], 1, 1, NULL, NULL);
+  for (uint8_t i = 0; i < 8; i++) eight.admit(files[i], 1, NULL, NULL);
   uint8_t nine[10][6];
   for (uint8_t i = 0; i < 10; i++) memcpy(nine[i], files[i], 6);
   n = selectBondEvictions(nine, 10, eight, nine[9], 8, out, 12);
@@ -119,7 +119,7 @@ static void testEvictions() {
   // ...unless every other bond is admitted: then the oldest admission goes,
   // whatever the listing order.
   BondTable ordered = emptyTable();
-  for (uint8_t i = 3; i < 11; i++) ordered.admit(files[i], 1, 1, NULL, NULL);  // 3 oldest, 10 newest
+  for (uint8_t i = 3; i < 11; i++) ordered.admit(files[i], 1, NULL, NULL);  // 3 oldest, 10 newest
   uint8_t listed[9][6];
   memcpy(listed[0], files[11], 6);                                   // the current link, not admitted
   for (uint8_t i = 1; i < 9; i++) memcpy(listed[i], files[11 - i], 6);  // 10, 9, ... 3: newest first
@@ -138,21 +138,37 @@ static void testServiceChanged() {
   uint8_t a[6], b[6];
   addr(a, 0x70);
   addr(b, 0x80);
-  const uint32_t oldBuild = firmwareHash("0.2.13-qa");
-  const uint32_t newBuild = firmwareHash("0.2.14-qa");
-  expect(oldBuild != newBuild, "every build has its own hash");
-  expect(firmwareHash("") == 2166136261u, "FNV-1a offset basis");
-  expect(firmwareHash("a") == 0xE40C292Cu, "FNV-1a reference value");
-  table.admit(a, 1, oldBuild, NULL, NULL);
-  expect(table.serviceChangedDue(a, newBuild), "an update is due for an admitted phone");
-  expect(!table.serviceChangedDue(a, oldBuild), "nothing due on the same build");
-  expect(!table.serviceChangedDue(b, newBuild), "never for a phone that is not admitted");
-  expect(table.markServiceChanged(a, newBuild) && !table.serviceChangedDue(a, newBuild),
-         "the phone's confirmation stores the build");
-  expect(!table.markServiceChanged(a, newBuild), "a second confirmation changes nothing");
-  expect(!table.markServiceChanged(b, newBuild), "a stranger's confirmation stores nothing");
-  table.admit(b, 1, newBuild, NULL, NULL);
-  expect(!table.serviceChangedDue(b, newBuild), "a phone admitted on this build already knows its table");
+  table.admit(a, 1, NULL, NULL);
+  // A boot: nothing confirmed yet, whatever build ran before.
+  ServiceChangedBoot boot;
+  memset(&boot, 0, sizeof(boot));
+  expect(boot.due(table, a), "after a boot it is due for an admitted phone");
+  expect(!boot.due(table, b), "never for a phone that is not admitted");
+  expect(!boot.confirm(table, b) && boot.count == 0, "a stranger's confirmation records nothing");
+  expect(boot.confirm(table, a) && !boot.due(table, a), "the phone's confirmation ends it for this boot");
+  expect(!boot.confirm(table, a) && boot.count == 1, "a second confirmation changes nothing");
+  table.admit(b, 1, NULL, NULL);
+  expect(boot.due(table, b), "a phone admitted after the boot gets it too");
+  // The next boot starts empty again: 0.4.0 -> 0.3.0 -> 0.4.0, or the same
+  // version rebuilt with another table, still tells the phone.
+  ServiceChangedBoot nextBoot;
+  memset(&nextBoot, 0, sizeof(nextBoot));
+  expect(nextBoot.due(table, a), "the next boot sends it again, even on the same version");
+  // More confirmations in one boot than the table holds: the oldest is
+  // forgotten (one more indication), never an overflow.
+  ServiceChangedBoot full;
+  memset(&full, 0, sizeof(full));
+  BondTable many = emptyTable();
+  uint8_t phones[BOND_TABLE_MAX + 1][6];
+  for (size_t i = 0; i <= BOND_TABLE_MAX; i++) {
+    addr(phones[i], (uint8_t)(0x10 * (i + 1)));
+    many.admit(phones[i], 1, NULL, NULL);  // the ninth evicts the first
+    if (i < BOND_TABLE_MAX) full.confirm(many, phones[i]);
+  }
+  expect(full.count == BOND_TABLE_MAX, "the list is full");
+  expect(full.confirm(many, phones[BOND_TABLE_MAX]) && full.count == BOND_TABLE_MAX &&
+             !full.confirmed(phones[0]) && full.confirmed(phones[BOND_TABLE_MAX]) && full.confirmed(phones[1]),
+         "a ninth confirmation forgets the oldest");
 }
 
 static void testRecord() {
@@ -161,14 +177,14 @@ static void testRecord() {
   uint8_t a[6], b[6];
   addr(a, 0x11);
   addr(b, 0x22);
-  table.admit(a, 1, 7, NULL, NULL);
-  table.admit(b, 0, 9, NULL, NULL);
+  table.admit(a, 1, NULL, NULL);
+  table.admit(b, 0, NULL, NULL);
   uint8_t bytes[BOND_RECORD_LENGTH];
   encodeBondTable(table, bytes);
   expect(bytes[0] == 'R' && bytes[1] == 'P' && bytes[2] == 'B' && bytes[3] == '1', "magic RPB1");
   BondTable back = emptyTable();
   expect(decodeBondTable(bytes, sizeof(bytes), back) && back.count == 2 && back.contains(a) && back.contains(b) &&
-             back.nextSeq == table.nextSeq && back.phones[1].firmwareHash == 9,
+             back.nextSeq == table.nextSeq && back.phones[1].retiredHash == 0,
          "round trip");
   BondTable untouched = emptyTable();
   untouched.count = 5;
@@ -215,15 +231,15 @@ static void testKeyPrint() {
   uint8_t a[6], b[6];
   addr(a, 0x31);
   addr(b, 0x41);
-  table.admit(a, 1, 1, NULL, NULL);
-  table.admit(b, 1, 1, NULL, NULL);
+  table.admit(a, 1, NULL, NULL);
+  table.admit(b, 1, NULL, NULL);
   expect(table.pendingKeyPrint() == 0, "a new admission waits for its fingerprint");
   expect(table.setKeyPrint(a, print) && table.pendingKeyPrint() == 1, "taken in admission order");
   expect(!table.setKeyPrint(a, 0), "zero is never a fingerprint");
   expect(!table.keepIfSameKeys(a, print) && table.contains(a), "same keys at boot: kept");
   expect(table.keepIfSameKeys(a, other) && !table.contains(a), "the bond now holds other keys: dropped");
   expect(table.keepIfSameKeys(b, other) && !table.contains(b), "never fingerprinted: dropped at boot");
-  table.admit(a, 1, 1, NULL, NULL);
+  table.admit(a, 1, NULL, NULL);
   table.setKeyPrint(a, print);
   expect(table.keepIfSameKeys(a, 0) && !table.contains(a), "the bond file is gone: dropped");
   expect(!table.keepIfSameKeys(b, print), "a phone not in the table: nothing to drop");

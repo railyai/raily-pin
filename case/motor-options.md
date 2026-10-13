@@ -20,6 +20,7 @@ Source: the 3D printing workspace (`Raily keyring 3D/motor-options.md`), 2026-09
 ## Update 2026-09-30: I2C bus for the DA7280 with a XIAO Sense
 
 - On the Sense, `Wire1` (TWIM1) is taken by the IMU, and the nRF52840 has only two TWIM blocks. So `Wire1.setPins(D6, D7)` would take the bus away from the IMU, which gestures need.
+- Keyring Air (2026-10-13): its carrier wires the DA7280 to `Wire` D4/D5 next to the OLED; the same firmware probes `Wire` first, then D6/D7 (`docs/pins/air-ship-mode.md` §7). The rest of this section is the P1 Grove edition.
 - Decision: D6/D7 run as **software (bit-banged) I2C**, e.g. SoftwareWire or SlowSoftI2CMaster, at about 100 kHz, with the DA7280 at 0x4A. Both hardware TWIMs stay as they are: `Wire` = OLED 0x3C + RTC 0x51, `Wire1` = IMU. Motor commands are rare and short, so software I2C is fast enough.
 - The DA7280 has its own I2C pull-ups, so no internal pull-ups are needed. Both sides run at 3.3 V, so no level shifter is needed. The firmware is the same as with the hub.
 - Pin order (checked against the sources, 2026-10-09): SCL = D7, SDA = D6.

@@ -26,7 +26,8 @@ WAKE_ONLY = ["connected"]
 # The deadlines and busy states loop() acts on; idleSleepMs() must see each.
 MUST_SEE = ["screenMailboxFull", "heldPress", "spareNonceReady", "rebootAtMs", "dropLinkAtMs",
             "bondCapDueMs", "bindWindow", "feedbackBusy(feedback)", "screenBusy(screen)", "rhythmBusy(rhythm)", "motorRetryAtMs",
-            "buttonEdges", "buttonDebounce", "batteryNextMs", "vddLogNextMs"]
+            "buttonEdges", "buttonDebounce", "shipHold", "batteryNextMs", "vddLogNextMs",
+            "voicePcm", "voiceHold", "voiceMicRunning", "voiceUplinkBusy()"]
 
 
 def functions(source):
