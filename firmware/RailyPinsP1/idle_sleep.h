@@ -88,6 +88,8 @@ static inline bool screenBusy(const ScreenState& state) {
 // 0.4 s and a slower press alike). A press of 2 s or more never scans: a
 // button squeezed in a pocket or stuck sends no location and no search. It
 // shows «didn't work»; the pairing window it is reserved for is not built.
+// On a ship-mode Air (ship_mode.h) a 3 s hold on an unowned pin opens the
+// bind window, still without a scan.
 static const uint32_t BUTTON_STABLE_MS = 30;
 static const uint32_t BUTTON_TAP_MAX_MS = 400;
 static const uint32_t BUTTON_LONG_MS = 2000;

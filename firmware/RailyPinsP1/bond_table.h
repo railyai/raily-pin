@@ -12,7 +12,7 @@
 // (an admit pass on that phone's encrypted link, D-2), the rule for a
 // trusted link (D-3), which bond files to evict above the cap (D-5), the
 // admitted table's flash record (/raily/bonds.bin, D-4) and the
-// Service Changed bookkeeping after an update (D-7). Pure, host-tested in
+// Service Changed bookkeeping after every boot (D-7). Pure, host-tested in
 // hardware/firmware/tests/test_bond_table.cpp.
 
 static const size_t BOND_TABLE_MAX = 8;       // admitted phones, and bond files kept
@@ -25,7 +25,10 @@ struct AdmittedPhone {
   uint8_t addrType;                // kept for the record; matching uses the 6 bytes
   uint8_t reserved;
   uint32_t seq;           // admission order: the oldest is evicted first
-  uint32_t firmwareHash;  // firmwareHash() of the build this phone last confirmed a Service Changed for
+  // Up to 0.4.0 the version hash of the build this phone last confirmed a
+  // Service Changed for. Unused since 0.4.1-qa (ServiceChangedBoot): written
+  // 0, ignored when read, kept so the flash record keeps its layout.
+  uint32_t retiredHash;
   uint32_t keyPrint;      // bondKeyFingerprint() of the admitted pairing's keys; 0 = not taken yet
 } __attribute__((packed));
 
@@ -43,17 +46,6 @@ static inline uint32_t bondKeyFingerprint(const uint8_t* file, size_t length) {
   uint32_t print = (uint32_t)digest[0] | ((uint32_t)digest[1] << 8) | ((uint32_t)digest[2] << 16) |
                    ((uint32_t)digest[3] << 24);
   return print == 0 ? 1u : print;
-}
-
-// FNV-1a of the firmware version string: a new build = a new GATT table as
-// far as a bonded phone's cache is concerned (D-7).
-static inline uint32_t firmwareHash(const char* version) {
-  uint32_t hash = 2166136261u;
-  for (const char* p = version; p != NULL && *p; p++) {
-    hash ^= (uint8_t)*p;
-    hash *= 16777619u;
-  }
-  return hash;
 }
 
 struct BondTable {
@@ -74,8 +66,7 @@ struct BondTable {
   // (idempotent). A full table evicts the oldest admission, copied to
   // *evicted so the caller removes its bond file too. Returns true when the
   // table changed.
-  bool admit(const uint8_t addr[BOND_ADDR_LENGTH], uint8_t addrType, uint32_t fwHash,
-             AdmittedPhone* evicted, bool* didEvict) {
+  bool admit(const uint8_t addr[BOND_ADDR_LENGTH], uint8_t addrType, AdmittedPhone* evicted, bool* didEvict) {
     if (didEvict) *didEvict = false;
     if (contains(addr)) return false;
     if (count >= BOND_TABLE_MAX) {
@@ -92,7 +83,7 @@ struct BondTable {
     memcpy(phone.addr, addr, BOND_ADDR_LENGTH);
     phone.addrType = addrType;
     phone.seq = nextSeq++;
-    phone.firmwareHash = fwHash;  // it just discovered this build's table
+    phone.retiredHash = 0;
     phone.keyPrint = 0;           // taken by loop() from the bond file
     return true;
   }
@@ -138,25 +129,49 @@ struct BondTable {
     nextSeq = 0;
   }
 
-  // Only admitted phones get a Service Changed indication, once per build.
-  bool serviceChangedDue(const uint8_t addr[BOND_ADDR_LENGTH], uint32_t fwHash) const {
-    int at = find(addr);
-    return at >= 0 && phones[at].firmwareHash != fwHash;
-  }
-
-  // The phone confirmed the indication. Returns true when the table changed.
-  bool markServiceChanged(const uint8_t addr[BOND_ADDR_LENGTH], uint32_t fwHash) {
-    int at = find(addr);
-    if (at < 0 || phones[at].firmwareHash == fwHash) return false;
-    phones[at].firmwareHash = fwHash;
-    return true;
-  }
-
  private:
   void removeAt(size_t at) {
     for (size_t i = at; i + 1 < count; i++) phones[i] = phones[i + 1];
     count--;
     memset(&phones[count], 0, sizeof(phones[count]));
+  }
+};
+
+// Service Changed after every boot (D-7), RAM only: each admitted phone
+// gets one indication on its first encrypted link after the pin booted,
+// whatever ran before. Up to 0.4.0 it went once per version string, stored
+// in the table: a round trip 0.4.0 -> 0.3.0 -> 0.4.0 (0.3.0 cannot send it,
+// 0x3003) or a rebuild under the same version with another GATT table left
+// the phone on a stale attribute cache, and the app found no voice_stream
+// (bench, 2026-10-13). A boot is the only moment the table can change, so
+// one indication per phone per boot is enough; it costs one rediscovery.
+struct ServiceChangedBoot {
+  uint8_t done[BOND_TABLE_MAX][BOND_ADDR_LENGTH];  // phones that confirmed since boot
+  uint8_t count;
+
+  bool confirmed(const uint8_t addr[BOND_ADDR_LENGTH]) const {
+    for (size_t i = 0; i < count; i++) {
+      if (memcmp(done[i], addr, BOND_ADDR_LENGTH) == 0) return true;
+    }
+    return false;
+  }
+
+  // Only admitted phones, and each once per boot.
+  bool due(const BondTable& table, const uint8_t addr[BOND_ADDR_LENGTH]) const {
+    return table.contains(addr) && !confirmed(addr);
+  }
+
+  // The phone confirmed the indication. Returns true when it is new. A full
+  // list (more phones admitted in one boot than the table holds) forgets
+  // its oldest entry: that phone just gets one more indication.
+  bool confirm(const BondTable& table, const uint8_t addr[BOND_ADDR_LENGTH]) {
+    if (!table.contains(addr) || confirmed(addr)) return false;
+    if (count >= BOND_TABLE_MAX) {
+      for (size_t i = 0; i + 1 < count; i++) memcpy(done[i], done[i + 1], BOND_ADDR_LENGTH);
+      count--;
+    }
+    memcpy(done[count++], addr, BOND_ADDR_LENGTH);
+    return true;
   }
 };
 

@@ -1,5 +1,6 @@
 // Host tests for soft_i2c.h and da7280.h: the DA7280 haptic driver on
-// bit-banged I2C (D6/D7) and the D0 fallback. A fake DA7280 sits on two
+// bit-banged I2C (D6/D7), on the hardware Wire bus (D4/D5, Keyring Air,
+// FakeWire below) and the D0 fallback. A fake DA7280 sits on two
 // open-drain wires and decodes START, address, ACK, data, repeated START
 // and STOP bit by bit, so the tests see the exact register writes the pin
 // would put on the bus.
@@ -262,6 +263,74 @@ struct Rig {
   }
 };
 
+// The hardware Wire bus (D4/D5) as the driver sees it: the OLED 0x3C and,
+// on the Expansion Board, the RTC 0x51 answer their own addresses only; a
+// DA7280 at 0x4A when `present`. begin() fails on a bus with no pull-ups
+// (a bare XIAO), as the sketch's pull-up check does.
+struct FakeWire {
+  bool pullUps = true;
+  bool present = true;
+  bool up = false;
+  int begins = 0;
+  int ends = 0;
+  uint8_t regs[256] = {};
+  std::vector<Write> writes;
+  std::vector<uint8_t> probed;  // every address the driver talked to
+  bool begin() {
+    begins++;
+    if (!pullUps) return false;
+    up = true;
+    return true;
+  }
+  void end() {
+    ends++;
+    up = false;
+  }
+  bool answers(uint8_t address) {
+    probed.push_back(address);
+    return up && present && address == da7280::ADDRESS;
+  }
+  bool writeRegister(uint8_t address, uint8_t reg, uint8_t value) {
+    if (!answers(address)) return false;
+    regs[reg] = value;
+    writes.push_back({reg, value});
+    return true;
+  }
+  bool readRegister(uint8_t address, uint8_t reg, uint8_t* value) {
+    if (!answers(address)) return false;
+    *value = regs[reg];
+    return true;
+  }
+};
+
+// The same reset-like values Rig gives the soft-I2C chip.
+static void resetLike(uint8_t* regs) {
+  regs[da7280::REG_CHIP_REV] = 0xBA;
+  regs[da7280::REG_TOP_CFG1] = 0x36;
+  regs[da7280::REG_ACTUATOR3] = 0xE7;
+  regs[da7280::REG_FRQ_LRA_PER_L] = 0x80;
+  regs[da7280::REG_TOP_CTL1] = 0x09;
+  regs[da7280::REG_TOP_CTL2] = 0x40;
+}
+
+// One image, both boards: a Wire bus first, then D6/D7, then D0.
+struct WireRig {
+  Wires wires;
+  FakeDa7280 chip;  // the D6/D7 one
+  FakePins pins;
+  FakeGpio gpio;
+  FakeWire wire;
+  HapticMotor<FakePins, FakeGpio, FakeWire> motor;
+
+  WireRig() : motor(pins, gpio, &wire) {
+    chip.wires = &wires;
+    pins.wires = &wires;
+    pins.slave = &chip;
+    resetLike(chip.regs);
+    resetLike(wire.regs);
+  }
+};
+
 static bool sameWrites(const std::vector<Write>& got, const Write* want, size_t n) {
   if (got.size() != n) {
     printf("  got %zu writes, want %zu:", got.size(), n);
@@ -436,6 +505,70 @@ static void testStopWritesDoNotShortCircuit() {
          "init: inactive mode is attempted after a failed amplitude stop");
 }
 
+static void testWireAir() {
+  WireRig rig;
+  rig.chip.present = false;  // the Air carrier: nothing on D6/D7
+  expect(rig.motor.begin() == HAPTIC_BACKEND_DA7280_WIRE, "Air: the DA7280 on Wire D4/D5 is found first");
+  expect(rig.motor.holdsWire() && rig.wire.up && rig.wire.ends == 0, "Air: the motor keeps the Wire bus");
+  expect(sameWrites(rig.wire.writes, INIT_WRITES, sizeof(INIT_WRITES) / sizeof(INIT_WRITES[0])),
+         "Air: the same init writes on Wire");
+  bool only4A = true;
+  for (size_t i = 0; i < rig.wire.probed.size(); i++) only4A = only4A && rig.wire.probed[i] == da7280::ADDRESS;
+  expect(only4A, "Air: only 0x4A is addressed on the shared bus (OLED 0x3C, RTC 0x51 untouched)");
+  expect(!rig.pins.open && rig.pins.ends == 0 && rig.pins.halfPeriods == 0, "Air: D6/D7 never touched");
+  expect(!rig.gpio.begun && rig.gpio.drives == 0, "Air: D0 never touched");
+  expect(rig.motor.chipRev() == 0xBA && rig.motor.wireChipRev() == 0xBA, "Air: chip id from Wire");
+  rig.wire.writes.clear();
+  expect(rig.motor.drive(true) && sameWrites(rig.wire.writes, ON_WRITES, 2), "Air: pulse on goes over Wire");
+  rig.wire.writes.clear();
+  expect(rig.motor.drive(false) && sameWrites(rig.wire.writes, OFF_WRITES, 2), "Air: pulse off goes over Wire");
+  expect(rig.chip.writes.empty(), "Air: nothing on the soft bus");
+}
+
+static void testWireP1() {
+  WireRig rig;
+  rig.wire.present = false;  // P1 Expansion Board: OLED 0x3C and RTC 0x51 on Wire, no 0x4A
+  expect(rig.motor.begin() == HAPTIC_BACKEND_DA7280, "P1: NACK at 0x4A on Wire -> the DA7280 on D6/D7");
+  expect(rig.wire.begins == 1 && rig.wire.ends == 1 && !rig.motor.holdsWire(),
+         "P1: Wire handed back after the probe (the OLED owns it)");
+  expect(!rig.motor.swapped() &&
+             sameWrites(rig.chip.writes, INIT_WRITES, sizeof(INIT_WRITES) / sizeof(INIT_WRITES[0])),
+         "P1: the soft-bus chip is set up as before");
+  expect(rig.wire.writes.empty(), "P1: nothing written on Wire");
+}
+
+static void testWireNoPullUps() {
+  WireRig rig;
+  rig.wire.pullUps = false;  // a bare XIAO: nothing on D4/D5
+  expect(rig.motor.begin() == HAPTIC_BACKEND_DA7280, "bare XIAO: no Wire pull-ups -> D6/D7");
+  expect(rig.wire.ends == 0 && !rig.wire.up && rig.wire.probed.empty(), "bare XIAO: Wire never started");
+}
+
+static void testWireWrongChip() {
+  WireRig rig;
+  rig.wire.regs[da7280::REG_CHIP_REV] = 0x00;  // something else answers 0x4A
+  expect(rig.motor.begin() == HAPTIC_BACKEND_DA7280, "Wire wrong id: not a DA7280 -> D6/D7");
+  expect(rig.wire.writes.empty() && rig.wire.ends == 1, "Wire wrong id: nothing written, bus handed back");
+}
+
+static void testWireNothing() {
+  WireRig rig;
+  rig.wire.present = false;
+  rig.chip.present = false;
+  expect(rig.motor.begin() == HAPTIC_BACKEND_GPIO, "no DA7280 anywhere -> D0 (old Grove kit)");
+  expect(rig.wire.ends == 1 && rig.pins.ends == 2, "no DA7280: every bus handed back");
+}
+
+static void testWireRuntimeNack() {
+  WireRig rig;
+  rig.chip.present = false;
+  rig.motor.begin();
+  rig.wire.present = false;
+  expect(!rig.motor.drive(false) && rig.motor.errors() == 1, "Wire unplugged: off refused, the caller retries");
+  expect(rig.motor.backend() == HAPTIC_BACKEND_DA7280_WIRE && !rig.gpio.begun && !rig.pins.open,
+         "Wire unplugged: no switch to another bus at run time");
+}
+
 #ifdef RAILY_HAVE_FACTORY_CHECKS
 static void testFactoryAgrees() {
   expect(HAPTIC_AMPLITUDE == 0x60 && HAPTIC_AMPLITUDE <= 0x7F,
@@ -478,6 +611,12 @@ int main() {
   testRuntimeNack();
   testNotBegun();
   testRetryDelay();
+  testWireAir();
+  testWireP1();
+  testWireNoPullUps();
+  testWireWrongChip();
+  testWireNothing();
+  testWireRuntimeNack();
   testStopWritesDoNotShortCircuit();
 #ifdef RAILY_HAVE_FACTORY_CHECKS
   testFactoryAgrees();

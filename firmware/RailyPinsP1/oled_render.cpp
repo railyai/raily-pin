@@ -6,6 +6,7 @@
 #include <U8g2lib.h>
 #include <new>
 #include "oled_compose.h"
+#include "wire_pullups.h"
 
 // Which end of the glass is up on the keyring is a bench finding (spec §1,
 // slice S0): R1 or R3, the same mappings as U8G2_R1 / U8G2_R3.
@@ -29,28 +30,6 @@ static uint8_t shownContrast = 0;
 // Loop task only; static so composing costs the 4 KB loop stack nothing.
 static uint8_t canvas[OLED_CANVAS_BYTES];
 static OledScratch scratch;
-
-static void releaseBusPins() {
-  nrf_gpio_cfg_default(g_ADigitalPinMap[PIN_WIRE_SDA]);
-  nrf_gpio_cfg_default(g_ADigitalPinMap[PIN_WIRE_SCL]);
-}
-
-// The Expansion Board pulls SDA and SCL up; a bare XIAO leaves them
-// floating. Discharge both lines through the internal pull-downs, let go,
-// and read: external pull-ups bring them high within microseconds, a
-// floating line stays low. (Reading with the ~13 kΩ pull-downs still on
-// would form a divider with a 10 kΩ pull-up that can read low.)
-static bool busPulledUp() {
-  pinMode(PIN_WIRE_SDA, INPUT_PULLDOWN);
-  pinMode(PIN_WIRE_SCL, INPUT_PULLDOWN);
-  delayMicroseconds(100);
-  pinMode(PIN_WIRE_SDA, INPUT);
-  pinMode(PIN_WIRE_SCL, INPUT);
-  delayMicroseconds(50);
-  bool high = digitalRead(PIN_WIRE_SDA) == HIGH && digitalRead(PIN_WIRE_SCL) == HIGH;
-  releaseBusPins();
-  return high;
-}
 
 // Keyring Air (-DRAILY_IDLE_SLEEP=1, docs/pins/air-power-risks.md P2): the
 // panel's charge pump runs from the cell (VBAT), so a sleeping panel turns
@@ -79,16 +58,22 @@ static inline __attribute__((always_inline)) void panelWake() {
   display->setPowerSave(0);
 }
 
-bool oledProbe() {
+bool oledProbe(bool wireHeld) {
   if (probed) return present;
   probed = true;
-  if (!busPulledUp()) return false;
-  Wire.begin();
-  Wire.setClock(OLED_I2C_HZ);
+  // A bus the motor already runs (the Air's DA7280 on Wire) has its
+  // pull-ups proven and stays up whatever this probe finds.
+  if (!wireHeld) {
+    if (!wireBusPulledUp()) return false;
+    Wire.begin();
+    Wire.setClock(OLED_I2C_HZ);
+  }
   Wire.beginTransmission(OLED_I2C_ADDRESS);
   if (Wire.endTransmission() != 0) {
-    Wire.end();
-    releaseBusPins();
+    if (!wireHeld) {
+      Wire.end();
+      releaseWirePins();
+    }
     return false;
   }
   display = new (displayStorage) U8G2_SSD1306_128X64_NONAME_F_HW_I2C(U8G2_R0, U8X8_PIN_NONE);

@@ -4,12 +4,14 @@
 
 #include "soft_i2c.h"
 
-// The vibration motor: SparkFun Qwiic Haptic Driver DA7280 (ROB-17590) on
-// software I2C, D6/D7, address 0x4A (docs/pins/firmware.md «Vibration
-// motor», hardware/raily-pin-public/case/motor-options.md «Update
-// 2026-09-30»). When it does not answer at boot, the motor is the old Grove
-// module on D0, a digital level, so old builds keep vibrating. Pure: host
-// tested in tests/test_da7280.cpp against a fake slave on two wires.
+// The vibration motor: the DA7280 haptic driver at 0x4A, on the hardware
+// Wire bus D4/D5 (Keyring Air, docs/pins/air-ship-mode.md «P1 vs Air») or
+// on software I2C D6/D7 (SparkFun ROB-17590 on the P1 Grove edition,
+// docs/pins/firmware.md «Vibration motor»,
+// hardware/raily-pin-public/case/motor-options.md «Update 2026-09-30»).
+// When neither answers at boot, the motor is the old Grove module on D0, a
+// digital level, so old builds keep vibrating. Pure: host tested in
+// tests/test_da7280.cpp against a fake slave on two wires.
 //
 // Only the actuator changes: rhythm.h still decides when the motor is on;
 // this file turns each on/off edge into DA7280 register writes.
@@ -178,16 +180,48 @@ class Da7280 {
 
 // Where the motor's on/off goes, chosen once at boot.
 enum HapticBackend : uint8_t {
-  HAPTIC_BACKEND_NONE = 0,    // before begin()
-  HAPTIC_BACKEND_GPIO = 1,    // the old Grove module on D0
-  HAPTIC_BACKEND_DA7280 = 2,  // the DA7280 on D6/D7
+  HAPTIC_BACKEND_NONE = 0,         // before begin()
+  HAPTIC_BACKEND_GPIO = 1,         // the old Grove module on D0
+  HAPTIC_BACKEND_DA7280 = 2,       // the DA7280 on software I2C, D6/D7 (P1 Grove edition)
+  HAPTIC_BACKEND_DA7280_WIRE = 3,  // the DA7280 on the hardware Wire bus, D4/D5 (Keyring Air)
 };
 
-// The motor: the DA7280 when it answers at boot, else the GPIO fallback.
+// The DA7280's registers over any I2C master with the SoftI2c interface:
+// bool writeRegister(addr, reg, value), bool readRegister(addr, reg, &value).
+template <class I2c>
+struct Da7280Registers {
+  explicit Da7280Registers(I2c* i2c) : i2c_(i2c) {}
+  bool write(uint8_t reg, uint8_t value) { return i2c_ && i2c_->writeRegister(da7280::ADDRESS, reg, value); }
+  bool read(uint8_t reg, uint8_t* value) { return i2c_ && i2c_->readRegister(da7280::ADDRESS, reg, value); }
+  I2c* i2c_;
+};
+
+// A board with no hardware Wire probe (the host tests' default).
+struct NoWireBus {
+  bool begin() { return false; }
+  void end() {}
+  bool writeRegister(uint8_t, uint8_t, uint8_t) { return false; }
+  bool readRegister(uint8_t, uint8_t, uint8_t*) { return false; }
+};
+
+// The motor, one image for both boards (owner, 2026-10-13), probed at boot
+// in this order:
+//   1. the DA7280 on the hardware Wire bus, D4/D5: the Keyring Air carrier
+//      (pcb-compact, shared with the OLED 0x3C) and the Air test bench (a
+//      DA7280 in the Expansion Board's Grove I2C port, next to the OLED
+//      0x3C and the RTC 0x51: the probe reads 0x4A only, other devices on
+//      the bus never answer it);
+//   2. the DA7280 on software I2C, D6/D7: the P1 Grove edition (the Grove
+//      UART port), then the swapped order once;
+//   3. the old Grove module on D0, a digital level, so old P1 kits keep
+//      vibrating.
 //
 // Pins: the SoftI2c pins plus void begin(bool swapped) (lines released;
 // swapped exchanges SDA and SCL) and void end() (both back to the reset
 // default). Gpio: void begin() (the off level) and void drive(bool on).
+// Wire: the SoftI2c register interface plus bool begin() (false: the bus
+// has no pull-ups or no hardware, nothing touched) and void end() (the bus
+// handed back); nullptr skips step 1.
 //
 // The wiring is documented as SDA = D6, SCL = D7 (the sketch's
 // RAILY_HAPTIC_SDA_PIN). begin() also tries the swapped order once, so a
@@ -197,19 +231,29 @@ enum HapticBackend : uint8_t {
 //
 // At run time a failed write is not a fallback: drive() returns false and
 // the caller retries (a missed «off» would leave the LRA buzzing). D0 is
-// never touched once the DA7280 answered.
-template <class Pins, class Gpio>
+// never touched once a DA7280 answered; D6/D7 are never touched once the
+// Wire one answered.
+template <class Pins, class Gpio, class Wire = NoWireBus>
 class HapticMotor {
  public:
-  HapticMotor(Pins& pins, Gpio& gpio)
-      : pins_(pins), gpio_(gpio), i2c_(pins), bus_(i2c_), chip_(bus_),
-        backend_(HAPTIC_BACKEND_NONE), swapped_(false), errors_(0) {}
+  HapticMotor(Pins& pins, Gpio& gpio, Wire* wire = nullptr)
+      : pins_(pins), gpio_(gpio), wire_(wire), i2c_(pins), softBus_(&i2c_), wireBus_(wire),
+        softChip_(softBus_), wireChip_(wireBus_), backend_(HAPTIC_BACKEND_NONE), swapped_(false),
+        errors_(0) {}
 
   HapticBackend begin() {
+    swapped_ = false;
+    if (wire_ && wire_->begin()) {
+      if (wireChip_.begin()) {
+        backend_ = HAPTIC_BACKEND_DA7280_WIRE;
+        return backend_;
+      }
+      wire_->end();
+    }
     for (uint8_t attempt = 0; attempt < 2; attempt++) {
       swapped_ = attempt == 1;
       pins_.begin(swapped_);
-      if (chip_.begin()) {
+      if (softChip_.begin()) {
         backend_ = HAPTIC_BACKEND_DA7280;
         return backend_;
       }
@@ -224,10 +268,13 @@ class HapticMotor {
   // True when the motor took the new state.
   bool drive(bool on) {
     switch (backend_) {
-      case HAPTIC_BACKEND_DA7280:
-        if (chip_.drive(on)) return true;
+      case HAPTIC_BACKEND_DA7280_WIRE:
+      case HAPTIC_BACKEND_DA7280: {
+        const bool ok = backend_ == HAPTIC_BACKEND_DA7280_WIRE ? wireChip_.drive(on) : softChip_.drive(on);
+        if (ok) return true;
         if (errors_ < 0xFFFFFFFFu) errors_++;
         return false;
+      }
       case HAPTIC_BACKEND_GPIO:
         gpio_.drive(on);
         return true;
@@ -238,25 +285,27 @@ class HapticMotor {
   }
 
   HapticBackend backend() const { return backend_; }
+  // The motor holds the hardware Wire bus: whoever else uses it (the OLED)
+  // must not end it.
+  bool holdsWire() const { return backend_ == HAPTIC_BACKEND_DA7280_WIRE; }
   bool swapped() const { return swapped_; }
-  // CHIP_REV as read at boot (0 when nothing answered).
-  uint8_t chipRev() const { return chip_.chipRev(); }
+  // CHIP_REV as read at boot on the bus that answered (on D6/D7 when none
+  // did; 0 when nothing answered there).
+  uint8_t chipRev() const { return holdsWire() ? wireChip_.chipRev() : softChip_.chipRev(); }
+  // CHIP_REV as read on Wire (0 when nothing answered there).
+  uint8_t wireChipRev() const { return wireChip_.chipRev(); }
   // DA7280 writes that failed at run time, since boot.
   uint32_t errors() const { return errors_; }
 
  private:
-  struct RegisterBus {
-    explicit RegisterBus(SoftI2c<Pins>& i2c) : i2c_(i2c) {}
-    bool write(uint8_t reg, uint8_t value) { return i2c_.writeRegister(da7280::ADDRESS, reg, value); }
-    bool read(uint8_t reg, uint8_t* value) { return i2c_.readRegister(da7280::ADDRESS, reg, value); }
-    SoftI2c<Pins>& i2c_;
-  };
-
   Pins& pins_;
   Gpio& gpio_;
+  Wire* wire_;
   SoftI2c<Pins> i2c_;
-  RegisterBus bus_;
-  Da7280<RegisterBus> chip_;
+  Da7280Registers<SoftI2c<Pins> > softBus_;
+  Da7280Registers<Wire> wireBus_;
+  Da7280<Da7280Registers<SoftI2c<Pins> > > softChip_;
+  Da7280<Da7280Registers<Wire> > wireChip_;
   HapticBackend backend_;
   bool swapped_;
   uint32_t errors_;

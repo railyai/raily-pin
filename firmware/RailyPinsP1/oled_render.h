@@ -2,8 +2,9 @@
 
 // The keyring OLED (docs/pins/keyring-oled.md): a 0.96" SSD1306 128 x 64 on
 // the Expansion Board's I2C (D4 SDA, D5 SCL, 0x3C), shown portrait.
-// -DRAILY_OLED=0 builds the LED-only firmware: nothing touches D4/D5 and
-// U8g2 is not linked.
+// -DRAILY_OLED=0 builds the LED-only firmware: the panel code never touches
+// D4/D5 and U8g2 is not linked (the motor's boot probe still looks for a
+// DA7280 on Wire D4/D5 unless -DRAILY_MOTOR=0).
 #ifndef RAILY_OLED
 #define RAILY_OLED 1
 #endif
@@ -19,8 +20,10 @@
 // Wire (the core's Wire busy-waits, so a bus with no pull-ups could hang
 // the loop task), then for an ACK at 0x3C. No pull-ups or no ACK: the
 // renderer stays inert for the whole boot and the pin runs as the LED-only
-// build. Returns whether a panel answered.
-bool oledProbe();
+// build. Returns whether a panel answered. wireHeld: the DA7280 already
+// runs on Wire (Keyring Air, da7280.h): the bus is up, and stays up even
+// when no panel answers (a screen-less Air).
+bool oledProbe(bool wireHeld);
 bool oledPresent();
 
 // Draws the frame if it differs from the one on the glass: only the 8 x 8

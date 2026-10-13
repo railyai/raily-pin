@@ -6,7 +6,8 @@ Bluefruit.begin() and advertising never reaches USB or BLE, and bricks the
 only bench pin. So the OLED is probed and driven from loop() only:
 setup() must not touch Wire, U8g2 or the renderer, and no display object
 may be built as a global (its constructor would run before setup()).
-The vibration motor pin is started after advertising too. Host tests
+The vibration motor (its Wire D4/D5 and D6/D7 probes, the D0 pin) is
+started after advertising too. Host tests
 never boot the board, so this reads the sources.
 """
 import pathlib

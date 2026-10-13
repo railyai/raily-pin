@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Host-side unit tests for the pure firmware headers (counter restore,
 # press and feedback gates, SHA-256/HMAC, server pass, secret record,
-# bind window, device_info, BLE bond table, the held press of bonding stage 2, screen_state payload, vibration rhythms,
-# the DA7280 haptic driver on bit-banged I2C and its D0 fallback, the OLED screen
+# bind window, device_info, BLE bond table and the bond files' CCCD field, the held press of bonding stage 2, screen_state payload, vibration rhythms,
+# the DA7280 haptic driver on Wire and on bit-banged I2C and its D0 fallback, the OLED screen
 # state (press, screen_state, fall, «found you», the agent's counts and notifications), the mascot record and composer,
-# serial `i`'s screen_state bench object), the Keyring Air sleep and button (idle_sleep.h), battery telemetry (battery_curve.h) and the VDD discharge log (vdd_log.h), the Air factory test's checks. No Arduino toolchain needed: g++, and python3 with
+# serial `i`'s screen_state bench object), the Keyring Air sleep and button (idle_sleep.h) and ship mode (ship_mode.h), battery telemetry (battery_curve.h) and the VDD discharge log (vdd_log.h), voice from the pin (adpcm.h + the golden vectors, voice_frame.h, voice_ring.h, voice_board.h, voice_gesture.h), the Air factory test's checks. No Arduino toolchain needed: g++, and python3 with
 # Pillow for the OLED golden frames and asset checks.
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -43,6 +43,13 @@ g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
 g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
     test_bond_table.cpp -o "$BUILD_DIR/test_bond_table"
 "$BUILD_DIR/test_bond_table"
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+    test_bootloader_kind.cpp -o "$BUILD_DIR/test_bootloader_kind"
+"$BUILD_DIR/test_bootloader_kind"
+python3 -B check_dfu_bootloader_guard.py
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+    test_bond_cccd_file.cpp -o "$BUILD_DIR/test_bond_cccd_file"
+"$BUILD_DIR/test_bond_cccd_file"
 g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
     test_press_hold.cpp -o "$BUILD_DIR/test_press_hold"
 "$BUILD_DIR/test_press_hold"
@@ -85,12 +92,59 @@ g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
 g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
     test_idle_sleep.cpp -o "$BUILD_DIR/test_idle_sleep"
 "$BUILD_DIR/test_idle_sleep"
+# Keyring Air ship mode (docs/pins/air-ship-mode.md): the ship state, its
+# radio rule and the 3 s wake / bind hold.
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+    test_ship_mode.cpp -o "$BUILD_DIR/test_ship_mode"
+"$BUILD_DIR/test_ship_mode"
 g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
     test_battery_curve.cpp -o "$BUILD_DIR/test_battery_curve"
 "$BUILD_DIR/test_battery_curve"
 g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
     test_vdd_log.cpp -o "$BUILD_DIR/test_vdd_log"
 "$BUILD_DIR/test_vdd_log"
+# Voice from the pin, V1 (docs/pins/voice-from-pin.md §10): IMA-ADPCM and
+# the golden vectors in vectors/, the voice_stream frames, the frame ring,
+# the per-board mic target, the high-pass filter, the bench serial
+# commands, and the push-to-talk gesture and the frame ring at the default
+# 2 s talk threshold (owner, 2026-10-09) and at the doc's original 0.4 s.
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+    test_adpcm.cpp -o "$BUILD_DIR/test_adpcm"
+"$BUILD_DIR/test_adpcm" vectors
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+    test_voice_frame.cpp -o "$BUILD_DIR/test_voice_frame"
+"$BUILD_DIR/test_voice_frame" vectors
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+    test_voice_ring.cpp -o "$BUILD_DIR/test_voice_ring"
+"$BUILD_DIR/test_voice_ring" vectors
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+    test_voice_board.cpp -o "$BUILD_DIR/test_voice_board"
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined -DRAILY_BOARD_XIAO147=1 \
+    test_voice_board.cpp -o "$BUILD_DIR/test_voice_board_xiao147"
+"$BUILD_DIR/test_voice_board_xiao147"
+"$BUILD_DIR/test_voice_board"
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+    test_voice_gesture.cpp -o "$BUILD_DIR/test_voice_gesture"
+"$BUILD_DIR/test_voice_gesture"
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined -DRAILY_VOICE_TALK_HOLD_MS=400 \
+    test_voice_gesture.cpp -o "$BUILD_DIR/test_voice_gesture_400ms"
+"$BUILD_DIR/test_voice_gesture_400ms"
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined -DRAILY_VOICE_TALK_HOLD_MS=400 \
+    test_voice_ring.cpp -o "$BUILD_DIR/test_voice_ring_400ms"
+"$BUILD_DIR/test_voice_ring_400ms" vectors
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+    test_voice_capture.cpp -o "$BUILD_DIR/test_voice_capture"
+"$BUILD_DIR/test_voice_capture"
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+    test_voice_bench.cpp -o "$BUILD_DIR/test_voice_bench"
+"$BUILD_DIR/test_voice_bench"
+# The Mac capture tool's own decoder must read the same vectors. It lives in
+# hardware/tools/, which the public mirror does not carry.
+if [ -f ../../tools/tests/test_voice_capture.py ]; then
+    python3 -B ../../tools/tests/test_voice_capture.py
+else
+    echo "run_tests.sh: voice_capture.py checks skipped (hardware/tools is not in this checkout)"
+fi
 if [ -d ../RailyAirFactoryTest ]; then
     g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
         test_factory_checks.cpp -o "$BUILD_DIR/test_factory_checks"
@@ -108,6 +162,7 @@ python3 -B check_oled_assets.py
 python3 check_ble_setup.py
 python3 check_authorize_replies.py
 python3 check_reset_reason.py
+python3 -B check_service_changed_range.py
 python3 -B check_oled_boot_order.py
 python3 -B check_fall_path.py
 python3 -B check_idle_wake.py

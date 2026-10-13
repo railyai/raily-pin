@@ -47,6 +47,10 @@ enum PassResult : uint8_t {
   // sketch answers ATT 0x0F Insufficient Encryption: pair, then fetch a new pass.
   // Never sent as 0x80 + 4 (screen_state uses ATT 0x84 for another meaning).
   PASS_NEEDS_ENCRYPTION = 0x84,
+  // A genuine DFU-entry pass, refused because the pin's bootloader cannot
+  // finish a BLE update (not OTAFIX, bootloader_kind.h): update over USB.
+  // 0x87, clear of screen_state's 0x84-0x86.
+  PASS_NO_BLE_UPDATE = 0x87,
 };
 
 // One nonce per link. It is usable for PASS_NONCE_LIFETIME_MS after issue
