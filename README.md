@@ -55,9 +55,10 @@ does not identify itself as a XIAO nRF52840 over USB.
    tool into a private folder (no administrator password), downloads the
    firmware only from `download.railyai.com`, checks its SHA-256 checksum,
    and refuses any board other than the XIAO nRF52840.
-4. When it is done, open the **Raily Device** app on your phone, sign in and
-   press the button. Tap **Add this device** when the app shows the pin:
-   that binds it to your account. Then tap **Pair** and confirm on the
+4. When it is done, open the **Raily Device** app on your iPhone
+   ([raily.si/air-app](https://raily.si/air-app)) and sign in. Press the
+   pin's **RESET** button once: for the next 3 minutes you can add it. Tap
+   **Add this device** on Nearby, then tap **Pair** and confirm on the
    iPhone, so the button works.
 
 Prefer to do it by hand? Follow [`docs/manual-flash.md`](docs/manual-flash.md).

@@ -61,15 +61,19 @@ or an error. Check the result in the next step: the app finds the pin.
 
 ## 5. Bind the pin
 
-1. Install the **Raily Device** app (link on devices.railyai.com), open it and
-   sign in.
-2. Keep the pin next to the phone and press its button (or hold the button
-   in the app). Tap **Add this device** when the app shows the pin: that
-   binds it to your account.
-3. Tap **Pair** in the app and confirm the Bluetooth request on the iPhone.
+1. Install the **Raily Device** app for iPhone (a TestFlight beta:
+   [raily.si/air-app](https://raily.si/air-app)), open it and sign in.
+2. Keep the pin next to the phone and press its **RESET** button **once**
+   (the small button next to the USB-C port on the XIAO, or RESET on the
+   Expansion Board). Two quick presses put the board back into flashing
+   mode. One press opens a 3-minute window to add the pin.
+3. Within those 3 minutes, tap **Add this device** on the app's Nearby
+   screen: that binds the pin to your account. If the app asks to press
+   the reset button, press RESET once and tap **Add this device** again.
+4. Tap **Pair** in the app and confirm the Bluetooth request on the iPhone.
    Until the pin is paired, its button presses do not reach the phone.
-4. Do this straight away: until a pin is bound, the first phone that
-   connects to it can claim it.
+5. Do this straight away: until a pin is bound to your account, someone
+   else nearby could add it to theirs.
 
 ## Something went wrong?
 

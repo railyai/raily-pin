@@ -192,17 +192,21 @@ did.
 
 Tell the person, in their language:
 
-1. Install the **Raily Device** app (the link is on
-   [devices.railyai.com](https://devices.railyai.com)), open it and sign in.
-2. Keep the pin close to the phone and **press the button** (or hold the
-   button in the app). Tap **Add this device** when the app shows the pin:
-   that binds it to their account.
-3. Last step: when the app asks, tap **Pair** and confirm the Bluetooth
+1. Install the **Raily Device** app for iPhone (a TestFlight beta:
+   [raily.si/air-app](https://raily.si/air-app)), open it and sign in.
+2. Keep the pin next to the phone and press its **RESET** button **once**
+   (the small button next to the USB-C port on the XIAO, or RESET on the
+   Expansion Board). Two quick presses put the board back into flashing
+   mode. One press opens a 3-minute window to add the pin.
+3. Within those 3 minutes, tap **Add this device** on the app's Nearby
+   screen: that binds the pin to their account. If the app asks to press
+   the reset button, press RESET once and tap **Add this device** again.
+4. Last step: when the app asks, tap **Pair** and confirm the Bluetooth
    request on the iPhone. Until the pin is paired, its button presses do
    not reach the phone.
-4. Do this now: until a pin is bound, the first phone that connects to it
-   can claim it.
-5. The pin's ID is shown in the app. Keep it private.
+5. Do this now: until a pin is bound to their account, someone else nearby
+   could add it to theirs.
+6. The pin's ID is shown in the app. Keep it private.
 
 Then remove the downloaded files if they like: `~/.raily-pin/files`. Leave
 `~/raily-pin` in place; it makes the next flash faster.
