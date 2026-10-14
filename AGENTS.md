@@ -18,6 +18,16 @@ Non-negotiable (details in flash.md):
 - On failure write the draft with `tools/raily_pin_flash.py report`; the
   person posts it. Never publish the pin ID (`rp1-…`).
 
+## Maintainers (Raily)
+
+Changes reach `main` and `release/*` only through pull requests (a
+repository ruleset enforces it). A release tag is pushed only on a merged
+commit, and an existing tag moves only when Raily's firmware owner decides.
+Raily's own agents change Raily's main repository first, copy the
+result here in a pull request and deliver it with Raily's `/ship-pr`
+workflow: wait for the review bots, fix every valid finding (in Raily's
+main repository first), then merge.
+
 ## If the person wants to change the code
 
 - `firmware/` mirrors the firmware that Raily builds and ships; it is
