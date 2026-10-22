@@ -97,6 +97,16 @@ g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
 g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
     test_ship_mode.cpp -o "$BUILD_DIR/test_ship_mode"
 "$BUILD_DIR/test_ship_mode"
+# The Bluetooth name by model (device_name.h): «Raily P1» on the P1 and DIY
+# images, «Raily Air» on the Air image (-DRAILY_SHIP_MODE=1), the 31-byte
+# scan response, and the sketch still setting it from that header.
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+    test_device_name.cpp -o "$BUILD_DIR/test_device_name_p1"
+"$BUILD_DIR/test_device_name_p1"
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined -DRAILY_SHIP_MODE=1 \
+    test_device_name.cpp -o "$BUILD_DIR/test_device_name_air"
+"$BUILD_DIR/test_device_name_air"
+python3 -B check_device_name.py
 g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
     test_battery_curve.cpp -o "$BUILD_DIR/test_battery_curve"
 "$BUILD_DIR/test_battery_curve"

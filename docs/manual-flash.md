@@ -15,7 +15,7 @@ is already in its shell.
 | `update-xiao_nrf52840_ble_bootloader-0.9.2-OTAFIX2.3-BP1.4_nosd.uf2` | Bootloader update, **plain** board |
 
 Check each file's SHA-256 against `releases.json` in
-[github.com/railyai/raily-pin](https://github.com/railyai/raily-pin/blob/v0.4.2/releases.json):
+[github.com/railyai/raily-pin](https://github.com/railyai/raily-pin/blob/v0.4.3/releases.json):
 `shasum -a 256 <file>` (Mac, Linux) or `certutil -hashfile <file> SHA256`
 (Windows). Do not use a file whose checksum differs.
 
@@ -26,8 +26,12 @@ second, on the tiny button next to the USB-C port (or through the paperclip
 hole in the shell). The LED pulses and a drive appears: `XIAO-SENSE` on the
 Sense board, `XIAO-BOOT` on the plain one.
 
-No drive? Try the double-tap again (the rhythm takes practice), then another
-cable.
+On a Mac the drive can take minutes to appear even after a good double-tap
+(seen 2026-10-15: about 2 min 40 s on a fresh board). Wait up to 5 minutes
+before trying again, and do not press RESET meanwhile.
+
+No drive after that? Try the double-tap again (the rhythm takes practice),
+then another cable.
 
 ## 2. Check the bootloader
 
@@ -42,10 +46,12 @@ Open `INFO_UF2.TXT` on the drive and look at the first line.
 
 Copy the bootloader update file for **your** board (Sense or plain, see
 `Board-ID` in `INFO_UF2.TXT`) onto the drive. The drive disappears and
-comes back within about 30 seconds.
+comes back, usually within about 30 seconds; on a Mac it can take minutes,
+as in step 1.
 
 - **Do not unplug the board during this step.**
-- If the drive does not come back, double-tap RESET again.
+- If the drive has not come back after 5 minutes, double-tap RESET again.
+  Do not press RESET before that.
 - Open `INFO_UF2.TXT` again: the first line must now start with
   `UF2 Bootloader 0.9.2-OTAFIX2.3`.
 
