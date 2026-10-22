@@ -28,6 +28,7 @@
 #include "press_hold.h"
 #include "idle_sleep.h"
 #include "ship_mode.h"
+#include "device_name.h"
 #include "wire_pullups.h"
 #include "battery_curve.h"
 #include "vdd_log.h"
@@ -39,8 +40,8 @@
 
 using namespace Adafruit_LittleFS_Namespace;
 
-static const char DEVICE_NAME[] = "Raily Device";
-static const char FW_VERSION[] = "0.4.2";
+static const char DEVICE_NAME[] = RAILY_DEVICE_NAME;  // the model: device_name.h
+static const char FW_VERSION[] = "0.4.3";
 
 BLEService railyService("7B1E0001-6F3A-4C2E-9A10-0D5C8F2A9E01");
 BLECharacteristic deviceInfoChr("7B1E0002-6F3A-4C2E-9A10-0D5C8F2A9E01");

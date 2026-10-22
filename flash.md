@@ -58,7 +58,7 @@ Nothing is installed system-wide."
 macOS / Linux:
 
 ```bash
-git clone --depth 1 --branch v0.4.2 https://github.com/railyai/raily-pin ~/raily-pin
+git clone --depth 1 --branch v0.4.3 https://github.com/railyai/raily-pin ~/raily-pin
 cd ~/raily-pin
 python3 -m venv .venv
 .venv/bin/pip install --disable-pip-version-check --require-hashes -r tools/requirements.txt
@@ -67,17 +67,17 @@ python3 -m venv .venv
 Windows (PowerShell):
 
 ```powershell
-git clone --depth 1 --branch v0.4.2 https://github.com/railyai/raily-pin $HOME\raily-pin
+git clone --depth 1 --branch v0.4.3 https://github.com/railyai/raily-pin $HOME\raily-pin
 cd $HOME\raily-pin
 py -3 -m venv .venv
 .venv\Scripts\pip install --disable-pip-version-check --require-hashes -r tools\requirements.txt
 ```
 
-`v0.4.2` is the release this page belongs to: always use the tag named
+`v0.4.3` is the release this page belongs to: always use the tag named
 here, never whatever `main` holds. Always make a fresh clone. If
 `~/raily-pin` already exists, do not reuse or change it (it could hold
 anything); clone into a new folder instead, for example
-`~/raily-pin-v0.4.2`, and use that folder below. Below, `PY` means `.venv/bin/python` (macOS/Linux) or
+`~/raily-pin-v0.4.3`, and use that folder below. Below, `PY` means `.venv/bin/python` (macOS/Linux) or
 `.venv\Scripts\python` (Windows), run from the `raily-pin` folder.
 
 Offer the person a look at `tools/raily_pin_flash.py` before you run it (it
@@ -110,21 +110,26 @@ retry with other files; go to "If something fails".
 
 Ask the person to **double-tap RESET** (two quick presses, within about half
 a second). The LED pulses and a drive called `XIAO-SENSE` (plain board:
-`XIAO-BOOT`) appears. Then run:
+`XIAO-BOOT`) appears, usually within seconds (on a Mac it can take minutes,
+see below). Then run:
 
 ```bash
-PY tools/raily_pin_flash.py bootloader
+PY tools/raily_pin_flash.py --timeout 300 bootloader
 ```
 
-The script reads `INFO_UF2.TXT` from the drive.
+The script waits up to 5 minutes for the drive (printing a "still waiting"
+line every 30 seconds), then reads `INFO_UF2.TXT`.
+On a Mac the drive can take minutes to appear even after a good
+double-tap (seen 2026-10-15: about 2 min 40 s on a fresh board), so do not
+ask for another double-tap while the script is still waiting.
 
 - `"status": "otafix"` → the board already has the bootloader that allows
   over-the-air updates. Skip to Step 6.
 - `"status": "needs_update"` → the board has the factory bootloader
   (usually `0.6.1`), which cannot receive updates over Bluetooth. Go to
   Step 5.
-- If the drive does not appear, ask for another double-tap (the timing
-  takes practice) and run the step again.
+- If the drive has not appeared after those 5 minutes, ask for another
+  double-tap (the timing takes practice) and run the step again.
 
 ## Step 5 — Install the OTAFIX bootloader (only if Step 4 said so)
 
@@ -135,12 +140,13 @@ XIAO drive. It takes under a minute. Please don't unplug the board until I
 say so." Ask for a yes. Then:
 
 ```bash
-PY tools/raily_pin_flash.py --yes install-bootloader
+PY tools/raily_pin_flash.py --timeout 300 --yes install-bootloader
 ```
 
-The drive disappears while the board rewrites its bootloader, then comes
-back. If it has not come back after about 30 seconds, ask the person to
-double-tap RESET again; the script keeps waiting for up to two minutes. It
+The drive disappears while the board rewrites its bootloader (about 10–30
+seconds), then comes back; on a Mac the drive can again take minutes to
+appear. The script waits up to 5 minutes and prints a "still waiting" line
+every 30 seconds: do not ask for a double-tap while it is waiting. It
 succeeds only when the drive reports an `0.9.2-OTAFIX2.3…` bootloader.
 
 - `"status": "check"` → the update usually worked, but the board restarted
@@ -152,11 +158,12 @@ succeeds only when the drive reports an `0.9.2-OTAFIX2.3…` bootloader.
 ## Step 6 — Flash the firmware
 
 Make sure the XIAO drive is visible (after Step 5 it usually is; otherwise
-ask for another double-tap). Explain what you will write, ask for a yes,
+ask for another double-tap, and on a Mac give the drive up to 5 minutes as
+in Step 4). Explain what you will write, ask for a yes,
 then:
 
 ```bash
-PY tools/raily_pin_flash.py --yes flash
+PY tools/raily_pin_flash.py --timeout 300 --yes flash
 ```
 
 The drive disappears as the board restarts into the Raily Pin firmware.
@@ -239,4 +246,4 @@ download sources or elevated rights. Then:
    Raily Device app, never in the public post.
 
 The by-hand path, without an agent, is in
-[`docs/manual-flash.md`](https://github.com/railyai/raily-pin/blob/v0.4.2/docs/manual-flash.md).
+[`docs/manual-flash.md`](https://github.com/railyai/raily-pin/blob/v0.4.3/docs/manual-flash.md).

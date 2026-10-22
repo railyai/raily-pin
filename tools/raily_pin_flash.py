@@ -73,6 +73,11 @@ BOOTLOADER_FAMILY = 0xD663823C  # "update-*.uf2" bootloader self-update images
 DEVICE_ID_RE = re.compile(r"rp1-[0-9a-f]{16}")
 DEVICE_ID_ANYCASE_RE = re.compile(r"rp1-[0-9a-f]{16}", re.IGNORECASE)
 MAX_DOWNLOAD_BYTES = 8 * 1024 * 1024  # firmware and bootloader files are well under 1 MB
+# Seconds to wait for the board or its drive. On some Macs the XIAO drive mounts
+# minutes after a good double-tap (2026-10-15: about 2 min 40 s), so asking for
+# another double-tap sooner only restarts the wait.
+DEFAULT_TIMEOUT = 300
+PROGRESS_EVERY = 30  # seconds between "still waiting" lines
 VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$")
 FILENAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
@@ -382,8 +387,16 @@ def find_xiao_drives() -> list[tuple[Path, dict]]:
 
 
 def wait_for_drive(timeout: float, accept=None) -> tuple[Path, dict]:
-    """Wait for exactly one XIAO drive; with `accept`, until its INFO_UF2.TXT satisfies it."""
-    deadline = time.monotonic() + timeout
+    """Wait for exactly one XIAO drive; with `accept`, until its INFO_UF2.TXT satisfies it.
+
+    On some Macs the drive mounts minutes after a good double-tap (seen
+    2026-10-15: about 2 min 40 s), so the wait prints a calm progress line
+    every PROGRESS_EVERY seconds and asks for another double-tap only after
+    the whole `timeout`.
+    """
+    start = time.monotonic()
+    deadline = start + timeout
+    next_progress = start + PROGRESS_EVERY
     last = None
     while True:
         drives = find_xiao_drives()
@@ -393,19 +406,35 @@ def wait_for_drive(timeout: float, accept=None) -> tuple[Path, dict]:
             last = drives[0]
             if accept is None or accept(last[1]):
                 return last
-        if time.monotonic() > deadline:
+        now = time.monotonic()
+        if now > deadline:
             # A drive that was seen but is gone now (the old mount right after a
             # copy) counts as "no drive", not as an answer from the board.
             if last is not None and drives:
                 return last
             hint = (
-                "The XIAO drive did not appear. Double-tap the RESET button quickly (two taps within half a second); "
-                "the green LED should pulse and a drive named XIAO-SENSE (or XIAO-BOOT) should appear. Then run this step again."
+                f"The XIAO drive did not appear within {_waited(timeout)}. Now double-tap the RESET button quickly "
+                "(two taps within half a second); the green LED should pulse and a drive named XIAO-SENSE "
+                "(or XIAO-BOOT) should appear. Then run this step again."
             )
             if platform.system() == "Linux":
                 hint += " On Linux without automatic mounting, open the drive once in the file manager so it gets mounted."
             raise DriveTimeout(hint)
+        if now >= next_progress:
+            say(
+                f"Still waiting for the XIAO-SENSE (or XIAO-BOOT) drive ({_waited(now - start)} so far, "
+                f"up to {_waited(timeout)}). This can take a few minutes on some Macs. Do not press RESET."
+            )
+            next_progress += PROGRESS_EVERY
         time.sleep(1)
+
+
+def _waited(seconds: float) -> str:
+    seconds = int(seconds)
+    minutes, rest = divmod(seconds, 60)
+    if not minutes:
+        return f"{rest} s"
+    return f"{minutes} min {rest} s" if rest else f"{minutes} min"
 
 
 def cmd_bootloader(args) -> dict:
@@ -561,13 +590,13 @@ def cmd_install_bootloader(args) -> dict:
     if not args.yes:
         raise Stop("install-bootloader writes the bootloader. Re-run with --yes after the person has agreed.")
     say(
-        "Installing the OTAFIX bootloader. Do NOT unplug the board until the drive comes back "
-        "(about 10-30 seconds): an interrupted bootloader write is the one way to make recovery hard."
+        "Installing the OTAFIX bootloader. Do NOT unplug the board until this step ends: the rewrite takes "
+        "about 10-30 seconds, and an interrupted bootloader write is the one way to make recovery hard."
     )
     complete = copy_to_drive(variant["file"], data, mount)
     say(
-        "Waiting for the drive to come back with the new bootloader. If it has not come back after "
-        "30 seconds, double-tap RESET again (the new bootloader may start in Bluetooth update mode)."
+        f"Waiting up to {_waited(args.timeout)} for the drive to come back with the new bootloader. "
+        "On some Macs it takes a few minutes to appear. Do not press RESET while this step is waiting."
     )
     # The old mount can linger for a while, so keep polling until the drive
     # reports OTAFIX (or the time is up) instead of trusting the first read.
@@ -754,7 +783,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--releases", type=Path, default=REPO / "releases.json", help="expected checksums (default: releases.json next to tools/)")
     p.add_argument("--workdir", type=Path, default=DEFAULT_WORKDIR, help="where downloads and the report draft go (default: ~/.raily-pin)")
     p.add_argument("--version", help="firmware version (default: 'latest' in releases.json)")
-    p.add_argument("--timeout", type=float, default=120, help="seconds to wait for the board or its drive")
+    p.add_argument(
+        "--timeout",
+        type=float,
+        default=DEFAULT_TIMEOUT,
+        help=f"seconds to wait for the board or its drive (default {DEFAULT_TIMEOUT}: on some Macs the drive takes minutes)",
+    )
     p.add_argument("--yes", action="store_true", help="the person agreed to write to the board")
     p.add_argument(
         "--local-dir",
