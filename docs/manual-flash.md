@@ -5,7 +5,7 @@ computer and a USB-C cable that carries data, and a paperclip if the pin
 is already in its shell.
 
 **Before you start, download these files from
-[devices.railyai.com](https://devices.railyai.com)** (they come from
+[devices.raily.si](https://devices.raily.si)** (they come from
 `download.railyai.com/pins/`):
 
 | File | What it is |
