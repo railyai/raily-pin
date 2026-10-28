@@ -1,8 +1,8 @@
 # Raily Pin
 
-> **Current kit (since 2026-09-30):** a pre-soldered XIAO nRF52840 Sense and the SparkFun DA7280 vibration motor, no soldering. The assembly guide is the DA7280 edition ([`guide/`](guide/)); the parts list is on [devices.railyai.com/build](https://devices.railyai.com/build).
+> **Current kit (since 2026-09-30):** a pre-soldered XIAO nRF52840 Sense and the SparkFun DA7280 vibration motor, no soldering. The assembly guide is the DA7280 edition ([`guide/`](guide/)); the parts list is on [devices.raily.si/build](https://devices.raily.si/build).
 
-Raily Pin is a small Bluetooth button for [Raily AI](https://railyai.com).
+Raily Pin is a small Bluetooth button for [Raily](https://raily.si).
 You press it when someone nearby catches your eye; your phone sends the
 press, with your location, to your Raily agent, and the agent checks the
 people around you against what you are looking for. The pin itself knows
@@ -22,7 +22,7 @@ This repository holds everything a self-builder needs:
 | [`guide/`](guide/) | Assembly guide | CC BY-NC-SA 4.0 |
 
 Downloads (firmware images, the printable guide, the shell files) live on
-**[devices.railyai.com](https://devices.railyai.com)**. Firmware binaries are
+**[devices.raily.si](https://devices.raily.si)**. Firmware binaries are
 served only from `https://download.railyai.com/pins/`.
 
 ## What you need (bill of materials)
@@ -48,7 +48,7 @@ does not identify itself as a XIAO nRF52840 over USB.
 
    > Flash my Raily Pin using https://github.com/railyai/raily-pin
 
-   This is the same sentence as on devices.railyai.com/build and in the kit
+   This is the same sentence as on devices.raily.si/build and in the kit
    email. Any language works, for example: *Прошей мой Raily Pin по
    https://github.com/railyai/raily-pin*.
 3. The agent explains each step before it runs it. It installs one Python
