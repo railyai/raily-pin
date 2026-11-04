@@ -22,13 +22,18 @@
 //            decides it (V2), this header only reads the flag.
 //   armed hold:   under the talk threshold = scan on release;
 //                 at the threshold = START, talk until release (END 0) or
-//                 the 60 s cap (END 1).
+//                 the 60 s cap (END 1); both are a normal end (0.4.4).
 //   unarmed hold: under the talk threshold = scan on release; from the
 //                 threshold to 2 s = scan when connected (voice is just not
-//                 on for this phone) or on a board without a mic, «didn't
-//                 work» on a voice pin with no phone (link read at release);
-//                 2 s or more = «didn't work», no scan (the shipped 0.3.0
-//                 rule).
+//                 on for this phone) or on a board without a mic; on a voice
+//                 pin with no phone (link read at release) «no link» when
+//                 owned, «didn't work» when unowned;
+//                 2 s or more = «no link» on an owned voice pin with no
+//                 phone, «didn't work» otherwise, no scan either way (the
+//                 shipped 0.3.0 rule, with the 0.4.4 screen).
+//
+// How a hold ended is its cue (VoiceCue, owner 2026-11-03): the sketch
+// picks the screen, the LED and the motor from it, never from the actions.
 //
 // The talk threshold is 2 s (owner, 2026-10-09): a press under 2 s is the
 // scan on release, as shipped in 0.3.0; an armed hold of 2 s or more talks
@@ -51,6 +56,7 @@ struct VoiceLink {
   bool voiceCapable;  // this board has a mic (voice_board.h, the runtime probe)
   bool linkUp;        // a phone is connected
   bool armed;         // trusted link + voice_stream subscribed (meaningful only with the two above)
+  bool owned;         // this pin is bound: only an owned pin says «no link» (an unowned one has no phone to lose)
 
   bool canTalk() const { return voiceCapable && linkUp && armed; }
 };
@@ -69,9 +75,53 @@ enum VoiceAction : uint16_t {
   VOICE_ACT_FAIL = 1 << 7,        // «didn't work»
 };
 
+// How a hold ended, for the person (0.4.4, owner 2026-11-03). One per
+// output; NONE while nothing ended (a press-down, START, a tap's scan).
+// The «didn't work» family (DIDNT_WORK, TALK_FAILED, NO_LINK) also sets
+// VOICE_ACT_FAIL.
+enum VoiceCue : uint8_t {
+  VOICE_CUE_NONE = 0,
+  VOICE_CUE_SENT = 1,         // END 0 (release) or END 1 (the 60 s cap): ▮ after the mic is off, «thinking»
+  VOICE_CUE_DIDNT_WORK = 2,   // 0.3.0's 2 s hold, connected but voice not on, a board without a mic, or an
+                              // unowned pin: «didn't work» and the red LED, no motor (the mic never ran)
+  VOICE_CUE_TALK_FAILED = 3,  // the ring overflowed (END 2), low battery (3), a phone STOP 2-4 or an
+                              // unknown one: «didn't work», the red LED, ▬▬▬
+  VOICE_CUE_NO_LINK = 4,      // the link went (or stopped carrying voice) mid-hold, or a talk hold on an
+                              // owned voice pin with no phone: «no link», the red LED, ▬▬▬
+  VOICE_CUE_SEE_PHONE = 5,    // a phone STOP 1, the voice minutes are spent: «see the phone», ▬
+};
+
+// voice_control STOP's reason byte (voice-from-pin.md §4; its own code
+// space, unrelated to END's reason): 1 = the voice minutes are spent.
+static const uint8_t VOICE_STOP_MINUTES_SPENT = 1;
+
+static inline uint8_t voiceStopCue(uint8_t phoneReason) {
+  return phoneReason == VOICE_STOP_MINUTES_SPENT ? VOICE_CUE_SEE_PHONE : VOICE_CUE_TALK_FAILED;
+}
+
+// What a voice_control STOP does (stopFor: the utterance it was written for,
+// +1; 0 = none). LIVE ends the talk. LATE gives only the outcome: the mic is
+// already off and the person is waiting for the answer, so spent minutes
+// after a short hold are not left to fade from «thinking» (0.4.4). A STOP for
+// another utterance, outside the reply, or on a bench hold (the serial sink)
+// is dropped, never applied to the next hold.
+enum VoiceStopRoute : uint8_t {
+  VOICE_STOP_DROP = 0,
+  VOICE_STOP_LIVE = 1,
+  VOICE_STOP_LATE = 2,
+};
+
+static inline uint8_t voiceStopRoute(uint16_t stopFor, uint8_t liveUtterance, bool micOn, bool replying,
+                                     bool serialSink) {
+  if (stopFor == 0 || serialSink || (uint8_t)(stopFor - 1) != liveUtterance) return VOICE_STOP_DROP;
+  if (micOn) return VOICE_STOP_LIVE;
+  return replying ? VOICE_STOP_LATE : VOICE_STOP_DROP;
+}
+
 struct VoiceGestureOut {
   uint16_t actions;
   uint8_t endReason;  // with VOICE_ACT_SEND_END: a VoiceEndReason (voice_frame.h)
+  uint8_t cue;        // a VoiceCue
 
   bool has(uint16_t action) const { return (actions & action) != 0; }
 };
@@ -110,7 +160,8 @@ struct VoiceGesture {
     const uint32_t heldMs = now - downAtMs;
     switch (state) {
       case VOICE_GESTURE_UNARMED:
-        result.actions |= unarmedRelease(heldMs, link);
+        result.cue = unarmedRelease(heldMs, link);
+        result.actions |= result.cue == VOICE_CUE_NONE ? VOICE_ACT_SCAN : VOICE_ACT_FAIL;
         break;
       case VOICE_GESTURE_PREROLL:  // a tap: the scan, the pre-roll never leaves the pin
         result.actions |= VOICE_ACT_MIC_OFF | VOICE_ACT_DROP_AUDIO | VOICE_ACT_SCAN;
@@ -118,6 +169,7 @@ struct VoiceGesture {
       case VOICE_GESTURE_TALKING:
         result.actions |= VOICE_ACT_MIC_OFF | VOICE_ACT_SEND_END;
         result.endReason = 0;  // VOICE_END_RELEASED
+        result.cue = VOICE_CUE_SENT;
         break;
       default:  // IDLE (a repeated ended) or SPENT
         break;
@@ -133,7 +185,7 @@ struct VoiceGesture {
       // Disconnected or unsubscribed mid-hold: mic off, buffers gone, no END
       // (nobody can receive it), never a replay after a reconnect.
       state = VOICE_GESTURE_SPENT;
-      return out(VOICE_ACT_MIC_OFF | VOICE_ACT_DROP_AUDIO | VOICE_ACT_FAIL);
+      return out(VOICE_ACT_MIC_OFF | VOICE_ACT_DROP_AUDIO | VOICE_ACT_FAIL, VOICE_CUE_NO_LINK);
     }
     const uint32_t heldMs = now - downAtMs;
     uint16_t actions = VOICE_ACT_NONE;
@@ -141,9 +193,11 @@ struct VoiceGesture {
       state = VOICE_GESTURE_TALKING;
       actions |= VOICE_ACT_SEND_START;
     }
+    // The cap is a normal end since 0.4.4 (owner, 2026-11-03): what was
+    // said goes to the agent, as on a release.
     if (state == VOICE_GESTURE_TALKING && heldMs >= VOICE_UTTERANCE_CAP_MS) {
       state = VOICE_GESTURE_SPENT;
-      VoiceGestureOut capped = out(actions | VOICE_ACT_MIC_OFF | VOICE_ACT_SEND_END | VOICE_ACT_FAIL);
+      VoiceGestureOut capped = out(actions | VOICE_ACT_MIC_OFF | VOICE_ACT_SEND_END, VOICE_CUE_SENT);
       capped.endReason = 1;  // VOICE_END_CAP
       return capped;
     }
@@ -151,16 +205,20 @@ struct VoiceGesture {
   }
 
   // The pin or the phone ends the utterance early: the frame ring overflowed
-  // (END 2), low battery (3), voice_control STOP (4). Never turns the mic on;
-  // before START there is no utterance to end, so the pre-roll is dropped.
-  VoiceGestureOut stop(uint8_t reason) {
+  // (END 2), low battery (3), voice_control STOP (4) with the phone's STOP
+  // reason byte. Never turns the mic on; before START there is no utterance
+  // to end, so the pre-roll is dropped. Spent minutes (STOP 1) tell the
+  // person to look at the phone; every other stop is a failed talk.
+  VoiceGestureOut stop(uint8_t reason, uint8_t phoneReason = 0) {
+    const uint8_t cue = reason == 4 /* VOICE_END_PHONE_STOP */ ? voiceStopCue(phoneReason) : VOICE_CUE_TALK_FAILED;
+    const uint16_t fail = cue == VOICE_CUE_SEE_PHONE ? VOICE_ACT_NONE : VOICE_ACT_FAIL;
     if (state == VOICE_GESTURE_PREROLL) {
       state = VOICE_GESTURE_SPENT;
-      return out(VOICE_ACT_MIC_OFF | VOICE_ACT_DROP_AUDIO | VOICE_ACT_FAIL);
+      return out(VOICE_ACT_MIC_OFF | VOICE_ACT_DROP_AUDIO | fail, cue);
     }
     if (state == VOICE_GESTURE_TALKING) {
       state = VOICE_GESTURE_SPENT;
-      VoiceGestureOut result = out(VOICE_ACT_MIC_OFF | VOICE_ACT_SEND_END | VOICE_ACT_FAIL);
+      VoiceGestureOut result = out(VOICE_ACT_MIC_OFF | VOICE_ACT_SEND_END | fail, cue);
       result.endReason = reason;
       return result;
     }
@@ -183,15 +241,20 @@ struct VoiceGesture {
   }
 
  private:
-  static VoiceGestureOut out(uint16_t actions) {
-    VoiceGestureOut result = {actions, 0};
+  static VoiceGestureOut out(uint16_t actions, uint8_t cue = VOICE_CUE_NONE) {
+    VoiceGestureOut result = {actions, 0, cue};
     return result;
   }
 
-  uint16_t unarmedRelease(uint32_t heldMs, const VoiceLink& link) const {
-    if (heldMs >= VOICE_LONG_HOLD_MS) return VOICE_ACT_FAIL;
-    if (heldMs < talkHoldMs || !link.voiceCapable || link.linkUp) return VOICE_ACT_SCAN;
-    return VOICE_ACT_FAIL;  // a talk hold on a voice pin with no phone: no scan
+  // VOICE_CUE_NONE = the scan; otherwise why it did not work.
+  uint8_t unarmedRelease(uint32_t heldMs, const VoiceLink& link) const {
+    // A talk hold on an owned voice pin with no phone says what is missing:
+    // the link. An unowned pin keeps 0.4.3's «didn't work», no motor.
+    const bool noPhone = link.voiceCapable && !link.linkUp;
+    const uint8_t failed = noPhone && link.owned ? VOICE_CUE_NO_LINK : VOICE_CUE_DIDNT_WORK;
+    if (heldMs >= VOICE_LONG_HOLD_MS) return failed;
+    if (heldMs < talkHoldMs || !noPhone) return VOICE_CUE_NONE;
+    return failed;  // no scan
   }
 };
 

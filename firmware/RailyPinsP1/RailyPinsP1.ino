@@ -41,7 +41,7 @@
 using namespace Adafruit_LittleFS_Namespace;
 
 static const char DEVICE_NAME[] = RAILY_DEVICE_NAME;  // the model: device_name.h
-static const char FW_VERSION[] = "0.4.3";
+static const char FW_VERSION[] = "0.4.4";
 
 BLEService railyService("7B1E0001-6F3A-4C2E-9A10-0D5C8F2A9E01");
 BLECharacteristic deviceInfoChr("7B1E0002-6F3A-4C2E-9A10-0D5C8F2A9E01");
@@ -2106,6 +2106,9 @@ static __attribute__((noinline)) void voiceMicStart() {
   NRF_PDM->ENABLE = 1;
   NRF_PDM->TASKS_START = 1;
   voiceMicRunning = true;
+#if RAILY_MOTOR
+  rhythm.setMicRunning(true, millis());  // the motor off, nothing pending: its hum would be recorded
+#endif
   voiceMicStartMs = millis();
 }
 
@@ -2135,6 +2138,9 @@ static __attribute__((noinline)) void voiceMicStop() {
   }
   sd_clock_hfclk_release();
   voiceMicRunning = false;
+#if RAILY_MOTOR
+  rhythm.setMicRunning(false, millis());
+#endif
 }
 
 // The uplink, the gesture and where the frames go.
@@ -2159,12 +2165,13 @@ static std::atomic<uint16_t> voiceLinkDataLength(27);
 // last frame reached the phone 3 s after the release (bench 2026-10-09).
 static const uint8_t VOICE_HVN_QUEUE = 8;
 static const uint8_t VOICE_INFLIGHT_MAX = VOICE_HVN_QUEUE - 1;
-// voice_control STOP from the phone (BLE task), taken by loop(): the
-// utterance it was written for, +1 (0 = none). A STOP for an utterance that
-// is no longer the live one (written while idle, or before a reconnect) is
-// dropped, never applied to the next hold.
-static std::atomic<uint16_t> pendingVoiceStop(0);
-static std::atomic<uint8_t> voiceStopReason(0);  // the phone's STOP reason byte, for the log
+// voice_control STOP from the phone (BLE task), taken by loop(): the STOP
+// reason byte << 16 | the utterance it was written for, +1 (0 = none). One
+// atomic, because the reason picks what the person sees: a second STOP can
+// never pair its reason with the first one's utterance. voiceStopRoute()
+// decides: it ends a live talk, gives its outcome while the reply is awaited,
+// and is otherwise dropped, never applied to the next hold.
+static std::atomic<uint32_t> pendingVoiceStop(0);
 // The 30-45 ms idle interval after END is retried until the SoftDevice takes
 // it (it refuses with BUSY while the START request is still pending).
 static bool voiceIdleIntervalPending = false;
@@ -2206,8 +2213,9 @@ static VoiceLink voiceLinkNow(uint16_t* handle, uint32_t* epoch) {
   *handle = linkCacheHandle;
   *epoch = linkEpoch;
   const bool trusted = *handle != BLE_CONN_HANDLE_INVALID && linkTrustedLocked(link);
+  const bool owned = secretOwned;
   xSemaphoreGive(passMutex);
-  VoiceLink out = {voiceCapable, *handle != BLE_CONN_HANDLE_INVALID, false};
+  VoiceLink out = {voiceCapable, *handle != BLE_CONN_HANDLE_INVALID, false, owned};
   out.armed = trusted && voiceStreamChr.notifyEnabled(*handle) &&
               voiceLinkMtu.load(std::memory_order_relaxed) >= VOICE_MIN_ATT_MTU;
 #if RAILY_VOICE_BENCH
@@ -2220,17 +2228,51 @@ static VoiceLink voiceLinkNow(uint16_t* handle, uint32_t* epoch) {
   return out;
 }
 
-// «Didn't work»: the red LED and the screen, as 0.3.0 does for a 2 s
-// press. The motor's ▬▬▬ only when a talk failed (the mic was on: the cap,
-// a lost link, a full ring, a phone STOP), so a press that never armed the
-// mic stays exactly 0.3.0's.
-static void voiceFailCue(bool talkFailed) {
-  pendingFeedback.store(4, std::memory_order_relaxed);
-  pendingScreenPressFailed.store(true, std::memory_order_relaxed);
-  if (talkFailed) {
-    pendingRhythmAck.store(4, std::memory_order_relaxed);
-  } else {
-    Serial.println("button: held 2 s or more, no scan");
+// How a hold ended (voice_gesture.h VoiceCue, owner 2026-11-03): the
+// screen, the LED and the motor. Loop task only (the screen is loop()'s).
+//   SENT         END 0 or the 60 s cap: ▮ (80 ms; the mic is already off,
+//                voiceApply's order), «thinking» until the answer;
+//   DIDNT_WORK   the mic never ran (2 s connected but voice not on, a board
+//                without a mic, an unowned pin): the red LED and «didn't
+//                work», no motor, exactly 0.3.0's 2 s press;
+//   TALK_FAILED  the ring full, low battery, a phone STOP 2-4: the same and
+//                ▬▬▬. Straight to the screen: the pressFailed flag does not
+//                reach it while the voice layer holds the glass;
+//   NO_LINK      the link went mid-hold, or a talk hold on an owned pin with
+//                no phone: «no link», the red LED, ▬▬▬;
+//   SEE_PHONE    a phone STOP 1, the voice minutes are spent: «see the
+//                phone» and ▬, the LED's result pattern.
+static void voiceCue(uint8_t cue, uint32_t now) {
+  switch (cue) {
+    case VOICE_CUE_SENT:
+      pendingRhythmAck.store(1, std::memory_order_relaxed);
+      screen.onVoiceEnd(now, cue);
+      break;
+    case VOICE_CUE_DIDNT_WORK:
+      pendingFeedback.store(4, std::memory_order_relaxed);
+      pendingScreenPressFailed.store(true, std::memory_order_relaxed);
+      Serial.println("button: held 2 s or more, no scan");
+      break;
+    case VOICE_CUE_TALK_FAILED:
+      pendingFeedback.store(4, std::memory_order_relaxed);
+      pendingRhythmAck.store(4, std::memory_order_relaxed);
+      screen.onVoiceEnd(now, cue);
+      break;
+    case VOICE_CUE_NO_LINK:
+      pendingFeedback.store(4, std::memory_order_relaxed);
+      pendingRhythmAck.store(4, std::memory_order_relaxed);
+      screen.onVoiceEnd(now, cue);
+      Serial.println("voice: no link for the talk");
+      break;
+    case VOICE_CUE_SEE_PHONE:
+      pendingFeedback.store(3, std::memory_order_relaxed);
+      pendingRhythmAck.store(3, std::memory_order_relaxed);
+      screen.onVoiceEnd(now, cue);
+      break;
+    case VOICE_CUE_NONE:  // a tap: «pressed» lets go, the scan's own screen follows
+    default:
+      screen.onVoiceEnd(now, VOICE_CUE_NONE);
+      break;
   }
   RAILY_WAKE_LOOP();
 }
@@ -2256,7 +2298,7 @@ static __attribute__((noinline)) bool voiceTakeFrame(uint32_t now) {
   return voiceUplink.capture(pcm);
 }
 
-static void voiceApply(const VoiceGestureOut& out, uint32_t now, uint16_t handle, bool micWasOn = true);
+static void voiceApply(const VoiceGestureOut& out, uint32_t now, uint16_t handle);
 
 // Every frame the mic has given so far goes into the uplink; a full ring
 // ends the utterance (END 2).
@@ -2270,10 +2312,14 @@ static void voiceDrain(uint32_t now, uint16_t handle) {
 }
 
 // What the gesture said, in its order: mic, frames, then the scan or the
-// cue. micWasOn: the mic ran before this step (a FAIL is then a failed talk).
-static void voiceApply(const VoiceGestureOut& out, uint32_t now, uint16_t handle, bool micWasOn) {
-  if (out.actions == VOICE_ACT_NONE) return;
-  if (out.has(VOICE_ACT_MIC_ON)) voiceMicStart();
+// cue (voiceCue). The screen follows the hold: «pressed» when the mic goes
+// on, «speak» at START (0.4.4).
+static void voiceApply(const VoiceGestureOut& out, uint32_t now, uint16_t handle) {
+  if (out.actions == VOICE_ACT_NONE && out.cue == VOICE_CUE_NONE) return;
+  if (out.has(VOICE_ACT_MIC_ON)) {
+    voiceMicStart();
+    screen.onVoiceHold(now);
+  }
   if (out.has(VOICE_ACT_SEND_PRESS)) {
     voiceUtterances++;
     if (!voiceUplink.press()) Serial.println("voice: two utterances still queued, the older ones given up");
@@ -2281,9 +2327,15 @@ static void voiceApply(const VoiceGestureOut& out, uint32_t now, uint16_t handle
   if (out.has(VOICE_ACT_SEND_START)) {
     voiceDrain(now, handle);  // the pre-roll so far, before the cue zeroes anything
     voiceUplink.start(voicePdmGainHalfDb(voiceGain));
-    // ▮ when audio starts leaving the pin, only for a short talk hold.
-    if (voiceStartCue.start(now, VOICE_TALK_HOLD_MS)) pendingRhythmAck.store(1, std::memory_order_relaxed);
+    // ▮ when audio starts leaving the pin, only for a short talk hold: the
+    // one pattern allowed with the mic on, its frames are zeroed.
+#if RAILY_MOTOR
+    if (voiceStartCue.start(now, VOICE_TALK_HOLD_MS)) rhythm.triggerOverMic(RHYTHM_SENT, now);
+#else
+    voiceStartCue.start(now, VOICE_TALK_HOLD_MS);
+#endif
     if (!voiceSinkSerial) voiceRequestInterval(handle, true);
+    screen.onVoiceStart(now);
     RAILY_WAKE_LOOP();
   }
   if (out.has(VOICE_ACT_MIC_OFF)) {
@@ -2305,7 +2357,7 @@ static void voiceApply(const VoiceGestureOut& out, uint32_t now, uint16_t handle
                   (unsigned)voiceUplink.current.framesDropped, (unsigned long)voiceOverruns);
   }
   if (out.has(VOICE_ACT_SCAN)) emitButtonEvent(0);  // press_type 0: the hardware button, as serial `p`
-  if (out.has(VOICE_ACT_FAIL)) voiceFailCue(micWasOn);
+  if (out.cue != VOICE_CUE_NONE || out.has(VOICE_ACT_MIC_OFF)) voiceCue(out.cue, now);
 }
 
 // The hold sources: the D1 button (debounced edges) and the bench's v / V.
@@ -2329,16 +2381,19 @@ static void voiceHoldBegan(uint32_t atMs, bool fromSerial) {
 }
 
 // quiet: the ship-mode rule silenced this release (ship_mode.h): no scan
-// and no «didn't work». It can only come with the mic off (an unowned pin
-// never talks); a talk that ran still ends as usual.
+// and no «didn't work» or «no link». It can only come with the mic off (an
+// unowned pin never talks); a talk that ran still ends as usual.
 static void voiceHoldEnded(uint32_t atMs, bool quiet) {
   uint16_t handle = BLE_CONN_HANDLE_INVALID;
   uint32_t epoch = 0;
   const VoiceLink link = voiceLinkNow(&handle, &epoch);
   const bool micWasOn = voiceHold.micOn();
   VoiceGestureOut out = voiceHold.holdEnded(atMs, link);
-  if (quiet && !micWasOn) out.actions = (uint16_t)(out.actions & ~(VOICE_ACT_SCAN | VOICE_ACT_FAIL));
-  voiceApply(out, millis(), handle, micWasOn);
+  if (quiet && !micWasOn) {
+    out.actions = (uint16_t)(out.actions & ~(VOICE_ACT_SCAN | VOICE_ACT_FAIL));
+    out.cue = VOICE_CUE_NONE;
+  }
+  voiceApply(out, millis(), handle);
 }
 
 // Something is still to go out (idleSleepMs). Its own frame: the copy is static.
@@ -2380,14 +2435,23 @@ static __attribute__((noinline)) void serviceVoice() {
   uint16_t handle = BLE_CONN_HANDLE_INVALID;
   uint32_t epoch = 0;
   const VoiceLink link = voiceLinkNow(&handle, &epoch);
-  const uint16_t stopFor = pendingVoiceStop.exchange(0, std::memory_order_relaxed);
+  const uint32_t stopTaken = pendingVoiceStop.exchange(0, std::memory_order_relaxed);
+  const uint16_t stopFor = (uint16_t)(stopTaken & 0xFFFFu);
+  const uint8_t stopReason = (uint8_t)(stopTaken >> 16);
   if (stopFor != 0) {
     Serial.printf("voice: phone STOP reason %u for utterance %u (live %u, mic %u)\n",
-                  (unsigned)voiceStopReason.load(std::memory_order_relaxed), (unsigned)(uint8_t)(stopFor - 1),
+                  (unsigned)stopReason, (unsigned)(uint8_t)(stopFor - 1),
                   (unsigned)voiceUplink.utterance, voiceHold.micOn() ? 1u : 0u);
   }
-  if (stopFor != 0 && (uint8_t)(stopFor - 1) == voiceUplink.utterance && voiceHold.micOn() && !voiceSinkSerial) {
-    voiceApply(voiceHold.stop(VOICE_END_PHONE_STOP), now, handle);
+  switch (voiceStopRoute(stopFor, voiceUplink.utterance, voiceHold.micOn(), screen.voiceReplying(), voiceSinkSerial)) {
+    case VOICE_STOP_LIVE:
+      voiceApply(voiceHold.stop(VOICE_END_PHONE_STOP, stopReason), now, handle);
+      break;
+    case VOICE_STOP_LATE:  // the utterance already ended: only its outcome is left to show
+      voiceCue(voiceStopCue(stopReason), now);
+      break;
+    default:
+      break;
   }
   // 3. A critical battery (battery_curve.h, from VDD) ends a talk: END 3.
   if (voiceHold.micOn() && batteryCriticalNow()) {
@@ -2486,7 +2550,8 @@ static void onVoiceBleEvent(ble_evt_t* evt) {
 // voice_control (7B1E000B): exactly one opcode, 0x01 STOP + a reason byte,
 // from a trusted link only (the ATT layer already needs encryption). No
 // opcode can start the mic. The reason is the phone's (voice-from-pin.md
-// §4), logged, not acted on: every STOP ends the utterance with END 4.
+// §4): every STOP ends the utterance with END 4; reason 1 (the minutes are
+// spent) shows «see the phone» with ▬, any other one «didn't work» (0.4.4).
 static void onVoiceControlAuthorize(uint16_t connHdl, BLECharacteristic*, ble_gatts_evt_write_t* request) {
   if (!linkTrustedNow(connHdl)) {
     rejectWriteAuthorize(connHdl, BLE_GATT_STATUS_ATTERR_INSUF_AUTHORIZATION);
@@ -2498,8 +2563,8 @@ static void onVoiceControlAuthorize(uint16_t connHdl, BLECharacteristic*, ble_ga
   }
   acceptWriteAuthorize(connHdl, request);
   // The live utterance id, read across tasks: a stale id only drops the STOP.
-  voiceStopReason.store(request->data[1], std::memory_order_relaxed);
-  pendingVoiceStop.store((uint16_t)(voiceUplink.utterance + 1), std::memory_order_relaxed);
+  pendingVoiceStop.store(((uint32_t)request->data[1] << 16) | (uint32_t)(voiceUplink.utterance + 1u),
+                         std::memory_order_relaxed);
   RAILY_WAKE_LOOP();
 }
 

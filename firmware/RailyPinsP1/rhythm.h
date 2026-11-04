@@ -128,15 +128,35 @@ struct RhythmPlayer {
   bool inLeadIn;
   bool hasStarted;
   bool quiet;
+  bool micRunning;
 
   // Queue a signal. A newer signal replaces the pending one and, once the
   // start window allows, the running pattern. RHYTHM_NONE is ignored, so a
-  // silent ack never cancels an important one.
+  // silent ack never cancels an important one. Dropped while the mic runs:
+  // the hum would enter the recording.
   void trigger(RhythmSignal signal, uint32_t now) {
+    advance(now);
+    if (micRunning) return;
+    triggerOverMic(signal, now);
+  }
+
+  // The pin's own START cue of a short talk hold, which zeroes the frames the
+  // motor would spoil (voice_capture.h VoiceStartCue). Nothing else uses it.
+  void triggerOverMic(RhythmSignal signal, uint32_t now) {
     advance(now);
     if (quiet || rhythmPattern(signal) == 0) return;
     pending = (uint8_t)signal;
     startPending(now);
+  }
+
+  // The mic went on or off (voice-from-pin.md, delta 2026-11-03). On: the
+  // motor stops at once, nothing running or pending survives, and trigger()
+  // drops signals until it goes off. Off: signals play again; a cue raised
+  // after this call plays with the mic already off.
+  void setMicRunning(bool on, uint32_t now) {
+    advance(now);
+    micRunning = on;
+    if (on) cancel(now);
   }
 
   // Quiet hours (screen_state flag bit 1): the motor stops at once and

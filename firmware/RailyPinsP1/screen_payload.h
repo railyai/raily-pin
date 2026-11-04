@@ -41,7 +41,11 @@ static const uint8_t SCREEN_FLAG_MODEST = 1u << 2;
 static const uint8_t SCREEN_FLAG_DISABLED = 1u << 3;
 static const uint8_t SCREEN_FLAG_ALWAYS_ON_USB = 1u << 4;
 static const uint8_t SCREEN_FLAG_AGENT_SPEAKING = 1u << 5;
-static const uint8_t SCREEN_FLAGS_KNOWN = 0x3F;  // bits 6-7 reserved
+// The voice agent is working on the person's question (0.4.4, owner
+// 2026-11-03). Like bit 5 it passes a plaintext link; it never wakes the
+// screen, it only keeps the pin's own «thinking» up (ScreenState, bounded).
+static const uint8_t SCREEN_FLAG_AGENT_THINKING = 1u << 6;
+static const uint8_t SCREEN_FLAGS_KNOWN = 0x7F;  // bit 7 reserved
 // Bits only a trusted (encrypted) write may carry.
 static const uint8_t SCREEN_FLAGS_TRUSTED_ONLY =
     SCREEN_FLAG_WAKE_NOW | SCREEN_FLAG_QUIET_HOURS | SCREEN_FLAG_ALWAYS_ON_USB;
@@ -103,8 +107,8 @@ static inline bool screenCountValid(uint8_t value) {
 // clamped and `out` is not touched. Then, on a link that is not encrypted,
 // clears bytes 2-5 and the trusted-only flag bits before handing it out, so
 // before bonding no write carries counts, notification kinds, wake, quiet
-// hours or always-on (agent, mascot, locale, modest, disabled and speaking
-// pass).
+// hours or always-on (agent, mascot, locale, modest, disabled, speaking and
+// thinking pass).
 static inline ScreenPayloadError parseScreenPayload(const uint8_t* data, uint16_t len,
                                                     bool encrypted, ScreenPayload* out) {
   if (data == nullptr || out == nullptr) return ScreenPayloadError::noBuffer;
@@ -243,6 +247,23 @@ struct SpeakingWake {
   bool holdsAwake(uint32_t now) {
     settle(now);
     return holding;
+  }
+
+  // The person's own voice session (ScreenState's voice layer, 0.4.4): the
+  // bit is still tracked, so the edge after the session is right, but the
+  // person started it: no wake, nothing charged, and a running hold yields
+  // to the session (it stops being charged from here).
+  bool onOwnWrite(uint32_t now, bool speakingNow) {
+    settle(now);
+    speaking = speakingNow;
+    endHold(now);
+    return false;
+  }
+
+  // The person pressed to talk: a running hold yields, speaking stays as it is.
+  void yieldHold(uint32_t now) {
+    settle(now);
+    endHold(now);
   }
 
   // Disconnect, stale reset, unbind: speaking ends; the limits stay.
