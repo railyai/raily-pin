@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include "oled_assets.h"
 #include "screen_payload.h"
+#include "voice_gesture.h"
 
 // What the keyring OLED shows right now (docs/pins/keyring-oled.md §9-§13).
 // contrast 0 means the panel sleeps (SSD1306 power save).
@@ -53,6 +54,16 @@ static inline bool screenPayloadSame(const ScreenPayload& a, const ScreenPayload
 // And the fall (PR 5, onFall()): a one-off that wakes the screen itself.
 // «Found you» (event_ack 0x11, onFoundYou()): someone nearby found this
 // person; the one self-wake that also vibrates (owner, 2026-09-28).
+// Voice from the pin (0.4.4, owner 2026-11-03; onVoiceHold/Start/End): the
+// person's own hold on an armed link shows «pressed» while held, «speak»
+// from START to the release, then «thinking» until the phone's answer
+// (bit 5: «speaking», held while it lasts, at most 60 s) or 10 s of
+// nothing. Bit 6 (thinking) keeps «thinking» up 10 s past each write that
+// sets it, never past VOICE_THINKING_MAX_MS from the release. The person
+// started it: none of it is charged to the speaking wake's budget or to
+// the wake rate limit, and nothing else (a wake bit, «found you», the
+// fall while held) takes the glass from it. event_ack 4 while the answer
+// is awaited or shown is «didn't work», as for a press.
 // The agent's counts (found, looking) show on an agent wake, only from a
 // trusted write (the plaintext strip and the stale reset zero them), and
 // their digits only on a wake the person asked for (spec §15): a self-wake
@@ -95,6 +106,9 @@ struct ScreenState {
   bool foundYouUsed;
   uint32_t lastFoundYouMs;  // the last honoured «found you»
   bool foundYouNow;       // this pass honoured one: loop() lets the motor play ▬ ▬
+  // The voice layer (0.4.4).
+  uint8_t voice;          // VOICE_SCREEN_*
+  uint32_t voiceAtMs;     // REPLY: the release; ANSWER: the answer's start
 
   static const uint32_t PRESSED_MS = 100;         // squash frame, then the radar (spec §11)
   static const uint32_t FLIGHT_TIMEOUT_MS = 10000;
@@ -111,6 +125,13 @@ struct ScreenState {
   static const uint32_t DOT_ON_MS = 1000;
   static const uint8_t DEMO_FOUND = 3;                    // the pack's drawn counts (k05, a03)
   static const uint8_t DEMO_LOOKING = 5;
+  static const uint32_t VOICE_REPLY_MS = 10000;         // «thinking» after the release or a thinking write
+  static const uint32_t VOICE_THINKING_MAX_MS = 60000;  // thinking writes extend it up to here from the release
+  static const uint8_t VOICE_SCREEN_NONE = 0;
+  static const uint8_t VOICE_SCREEN_HELD = 1;    // «pressed»: the mic is on, under the talk threshold
+  static const uint8_t VOICE_SCREEN_TALK = 2;    // «speak»: START sent, until the release
+  static const uint8_t VOICE_SCREEN_REPLY = 3;   // «thinking»: released, the answer is awaited
+  static const uint8_t VOICE_SCREEN_ANSWER = 4;  // «speaking» that answers the person's own hold
   static const uint8_t CONTRAST_NORMAL = 0x20;
   static const uint8_t CONTRAST_PRESS = 0x7F;
 
@@ -129,8 +150,12 @@ struct ScreenState {
     if (!owned && (hasPayload || mascot != 0)) release(now);
     if (linkWasUp && !connected) linkLost(now);
     linkWasUp = connected;
-    if (press) onPress(now, connected, owned);
-    if (pressFailed) onPressFailed(now);
+    // A live voice hold keeps the glass: a press from the phone during it
+    // still goes to the phone, but neither it nor its failure shows here (it
+    // would clear the hold, search with the mic on and time out as an error).
+    // A release lets go first, so a tap's own scan shows as usual.
+    if (press && !voiceHeld()) onPress(now, connected, owned);
+    if (pressFailed && !voiceHeld()) onPressFailed(now);
     // An ack from the phone read in the same pass as a new press almost
     // surely answers the one before it (a result needs a server round
     // trip): the screen drops it, so a late «3» never resolves a press that
@@ -152,12 +177,16 @@ struct ScreenState {
     payloadTrusted = trusted;
     lastWriteMs = now;  // every accepted write restarts the stale timer
     mascot = p.mascot;
+    // The person's own voice session holds the glass: its speaking is not
+    // an unsolicited wake (nothing charged), and a wake bit is not spent.
+    const bool own = voice != VOICE_SCREEN_NONE;
+    const bool speakingNow = p.hasFlag(SCREEN_FLAG_AGENT_SPEAKING);
     // Bit 5 wakes on its own bounded terms on any link (quiet hours do not
     // gate it: the person started the voice session).
-    bool wake = speaking.onAcceptedWrite(now, p.hasFlag(SCREEN_FLAG_AGENT_SPEAKING));
+    bool wake = own ? speaking.onOwnWrite(now, speakingNow) : speaking.onAcceptedWrite(now, speakingNow);
     // Bit 0 arrives only on a trusted link (the plaintext strip clears it);
     // quiet hours win over it, and it is honoured once a minute at most.
-    if (trusted && p.hasFlag(SCREEN_FLAG_WAKE_NOW) && !p.hasFlag(SCREEN_FLAG_QUIET_HOURS) &&
+    if (!own && trusted && p.hasFlag(SCREEN_FLAG_WAKE_NOW) && !p.hasFlag(SCREEN_FLAG_QUIET_HOURS) &&
         (!wakeUsed || (uint32_t)(now - lastWakeMs) >= WAKE_INTERVAL_MS)) {
       wakeUsed = true;
       lastWakeMs = now;
@@ -166,6 +195,21 @@ struct ScreenState {
     // Never over a press in flight, the bench or the fall: a wake that
     // lands in the fall's 3.7 s is dropped, the write itself is kept.
     if (demo || inFlight || falling()) return;
+    if (voice == VOICE_SCREEN_REPLY) {
+      if (speakingNow) {  // the answer: «speaking» while bit 5 lasts (advance())
+        voice = VOICE_SCREEN_ANSWER;
+        voiceAtMs = now;
+        holdMs = IDLE_MS;
+        show(OLED_SCENE_SPEAKING, now);
+      } else if (p.hasFlag(SCREEN_FLAG_AGENT_THINKING) && (uint32_t)(now - voiceAtMs) < VOICE_THINKING_MAX_MS) {
+        // Still thinking: 10 s more, and the fade starts at the cap at the latest.
+        const uint32_t elapsed = (uint32_t)(now - voiceAtMs);
+        const uint32_t latest = VOICE_THINKING_MAX_MS - VOICE_REPLY_MS;
+        idleAtMs = voiceAtMs + (elapsed < latest ? elapsed : latest);
+      }
+      return;
+    }
+    if (own) return;  // pressed, speak, the answer: the person's session keeps the glass
     if (wake) {
       wakeAgent(now, false);
     } else if (trusted && changed && agentShown && scene != OLED_SCENE_OFF) {
@@ -194,8 +238,9 @@ struct ScreenState {
   // person's own keyring). Modest draws the mascot alone (the composer);
   // the words follow the phone's locale like every scene.
   void onFall(uint32_t now) {
-    if (disabled() || inFlight) return;
+    if (disabled() || inFlight || voiceHeld()) return;  // the person is pressing: the fall is dropped
     demo = false;
+    voice = VOICE_SCREEN_NONE;
     agentShown = false;
     boosting = false;  // a press outcome's full-contrast second ends here: the fall is normal contrast
     holdMs = sceneMs(OLED_SCENE_FELL);
@@ -203,6 +248,69 @@ struct ScreenState {
   }
 
   bool falling() const { return scene == OLED_SCENE_FELL; }
+
+  // Voice from the pin (voice_gesture.h): the sketch calls these from loop()
+  // as the gesture acts. A hold that turned the mic on (MIC_ON): «pressed»,
+  // full contrast, held while the button is.
+  void onVoiceHold(uint32_t now) {
+    demo = false;
+    agentShown = false;
+    inFlight = false;
+    pressAtMs = now;
+    boosting = true;
+    holdMs = IDLE_MS;
+    voice = VOICE_SCREEN_HELD;
+    speaking.yieldHold(now);
+    show(OLED_SCENE_PRESSED, now);
+  }
+
+  // START: «speak» until the release. No motor: the hum would be recorded.
+  void onVoiceStart(uint32_t now) {
+    if (voice != VOICE_SCREEN_HELD) return;
+    voice = VOICE_SCREEN_TALK;
+    show(OLED_SCENE_TALK, now);
+  }
+
+  // How the hold ended: a VoiceCue (voice_gesture.h), which also picks the
+  // LED and the motor in the sketch. VOICE_CUE_NONE (a tap's scan) lets go
+  // of «pressed»: the press's own screen follows through tick().
+  void onVoiceEnd(uint32_t now, uint8_t cue) {
+    switch (cue) {
+      case VOICE_CUE_SENT:  // «thinking» until the answer, at most 10 s with no news
+        demo = false;
+        agentShown = false;
+        inFlight = false;
+        boosting = false;
+        holdMs = VOICE_REPLY_MS;
+        voice = VOICE_SCREEN_REPLY;
+        voiceAtMs = now;
+        show(OLED_SCENE_THINKING, now);
+        return;
+      case VOICE_CUE_NO_LINK:  // K10 «no link» for 3 s, as a press with no phone
+        voiceOutcome(now, OLED_SCENE_NO_LINK, NO_LINK_MS);
+        return;
+      case VOICE_CUE_SEE_PHONE:  // the minutes are spent: the phone says why
+        voiceOutcome(now, OLED_SCENE_RESULT, IDLE_MS);
+        return;
+      case VOICE_CUE_DIDNT_WORK:
+      case VOICE_CUE_TALK_FAILED:
+        onPressFailed(now);
+        return;
+      default:
+        if (voiceHeld()) {
+          voice = VOICE_SCREEN_NONE;
+          idleAtMs = now;  // «pressed» idles like any scene until the press shows
+        }
+        return;
+    }
+  }
+
+  // The button is held on a voice session (no idle fade, no fall).
+  bool voiceHeld() const { return voice == VOICE_SCREEN_HELD || voice == VOICE_SCREEN_TALK; }
+
+  // Released, the answer is awaited or showing: a late phone STOP still has
+  // someone waiting for it (voiceStopRoute).
+  bool voiceReplying() const { return voice == VOICE_SCREEN_REPLY || voice == VOICE_SCREEN_ANSWER; }
 
   // Unbind or release (and any unowned pass): the payload and the mascot
   // go, speaking stops. loop() runs it in the same pass as the release, and
@@ -228,6 +336,7 @@ struct ScreenState {
     if (demoScene >= OLED_SCENE_COUNT) return;
     inFlight = false;
     agentShown = false;
+    voice = VOICE_SCREEN_NONE;
     demo = demoScene != OLED_SCENE_OFF;
     demoShape = shape < OLED_SHAPE_COUNT ? shape : OLED_SHAPE_PEBBLE;
     demoMaterial = material < OLED_MATERIAL_COUNT ? material : OLED_MATERIAL_SATIN;
@@ -243,7 +352,7 @@ struct ScreenState {
   uint8_t mascotByte() const { return mascot; }
 
   // What an agent wake shows now. Order: set me up (unowned), nothing
-  // known, speaking, a notification, paused, needs setup, then the counts
+  // known, speaking, thinking, a notification, paused, needs setup, then the counts
   // (found before looking), then the agent's own state. A notification is
   // what woke it; a paused agent or one that needs setting up says so
   // before any count: that is what the person has to act on.
@@ -251,6 +360,7 @@ struct ScreenState {
     if (!owned) return OLED_SCENE_SET_ME_UP;  // spec §15: only K9, default pebble
     if (!hasPayload) return OLED_SCENE_NOTHING_KNOWN;
     if (payload.hasFlag(SCREEN_FLAG_AGENT_SPEAKING)) return OLED_SCENE_SPEAKING;
+    if (payload.hasFlag(SCREEN_FLAG_AGENT_THINKING)) return OLED_SCENE_THINKING;  // at most 10 s old (advance())
     switch (payload.notify) {  // non-zero only after a trusted write
       case SCREEN_NOTIFY_NEW_FINDING: return OLED_SCENE_FOUND_SELF;  // the pack's a02: never a digit
       case SCREEN_NOTIFY_REQUEST_RECEIVED: return OLED_SCENE_REQUEST;
@@ -304,7 +414,7 @@ struct ScreenState {
     f.shiftY = kOledWakeShift[wakes % OLED_WAKE_SHIFTS][1];
     f.contrast = boosting && (uint32_t)(now - pressAtMs) < BOOST_MS ? CONTRAST_PRESS : CONTRAST_NORMAL;
     uint32_t idle = (uint32_t)(now - idleAtMs);
-    if (!inFlight && !speakingHeld && idle >= holdMs) {
+    if (!inFlight && !speakingHeld && !voiceHolds() && idle >= holdMs) {
       // 1 s linear ramp down; advance() turns the panel off at the end.
       uint32_t left = holdMs + FADE_MS - idle;
       f.contrast = (uint8_t)((uint32_t)f.contrast * left / FADE_MS);
@@ -330,6 +440,21 @@ struct ScreenState {
   void repaint(uint8_t next, uint32_t now) {
     scene = next;
     sceneAtMs = now;
+  }
+
+  // The voice layer holds the screen awake past its idle timer: the button
+  // is down, or the answer to the person's own hold is playing.
+  bool voiceHolds() const { return voiceHeld() || voice == VOICE_SCREEN_ANSWER; }
+
+  void voiceOutcome(uint32_t now, uint8_t outcome, uint32_t hold) {
+    demo = false;
+    agentShown = false;
+    inFlight = false;
+    pressAtMs = now;
+    boosting = true;
+    holdMs = hold;
+    voice = VOICE_SCREEN_NONE;
+    show(outcome, now);
   }
 
   // asked: the person woke it. A self-wake over an asked agent scene keeps
@@ -358,14 +483,15 @@ struct ScreenState {
   }
 
   void linkLost(uint32_t now) {
-    // The app clears bit 5 on disconnect, but cannot write once the link is
-    // gone: the pin clears it itself.
+    // The app clears bits 5 and 6 on disconnect, but cannot write once the
+    // link is gone: the pin clears them itself.
     speaking.stop(now);
-    payload.flags = (uint8_t)(payload.flags & ~SCREEN_FLAG_AGENT_SPEAKING);
+    payload.flags = (uint8_t)(payload.flags & ~(SCREEN_FLAG_AGENT_SPEAKING | SCREEN_FLAG_AGENT_THINKING));
   }
 
   // Spec §10 «Nothing known»: the agent is unknown, counts and notification
-  // go, the trusted-only bits (0, 1, 4) and speaking (5) are cleared, and
+  // go, the trusted-only bits (0, 1, 4), speaking (5) and thinking (6) are
+  // cleared, and
   // modest/disabled (2, 3) survive only if a trusted write set them. The
   // mascot and the locale stay.
   void staleReset(uint32_t now) {
@@ -381,6 +507,7 @@ struct ScreenState {
 
   void onPress(uint32_t now, bool connected, bool ownedNow) {
     demo = false;
+    voice = VOICE_SCREEN_NONE;
     agentShown = false;
     pressAtMs = now;
     boosting = true;
@@ -403,6 +530,7 @@ struct ScreenState {
 
   void onPressFailed(uint32_t now) {
     demo = false;
+    voice = VOICE_SCREEN_NONE;
     agentShown = false;
     pressAtMs = now;
     boosting = true;
@@ -415,6 +543,17 @@ struct ScreenState {
     if (demo) return;
     // Only a press outcome may change the screen: an ack never wakes it.
     bool outcome = inFlight || scene == OLED_SCENE_RESULT || scene == OLED_SCENE_ERROR;
+    // The answer to a voice hold is an outcome too: the phone sends 4 when
+    // it heard no question (0.4.4).
+    const bool voiceAwaited = voice == VOICE_SCREEN_REPLY || voice == VOICE_SCREEN_ANSWER;
+    if (ack == 4 && voiceAwaited && scene != OLED_SCENE_OFF) {
+      voice = VOICE_SCREEN_NONE;
+      inFlight = false;
+      agentShown = false;
+      holdMs = IDLE_MS;
+      change(OLED_SCENE_ERROR, now);
+      return;
+    }
     if ((ack == 1 || ack == 2) && inFlight) {
       change(OLED_SCENE_SEARCHING, now);
     } else if (ack == 3 && outcome) {
@@ -441,6 +580,7 @@ struct ScreenState {
   // bonding quiet hours never hold it back).
   void onFoundYou(uint32_t now) {
     if (!owned || demo || inFlight || falling() || disabled() || quietHours()) return;
+    if (voice != VOICE_SCREEN_NONE) return;  // the person's voice session: the motor would be recorded or talk over it
     if (foundYouUsed && (uint32_t)(now - lastFoundYouMs) < FOUND_YOU_INTERVAL_MS) return;
     foundYouUsed = true;
     lastFoundYouMs = now;
@@ -461,6 +601,21 @@ struct ScreenState {
       change(OLED_SCENE_ERROR, now);
     }
     if (hasPayload && !stale && (uint32_t)(now - lastWriteMs) >= STALE_MS) staleReset(now);
+    // Bit 6 lasts 10 s past the write that set it (a phone that went quiet
+    // never leaves «thinking» behind).
+    if (hasPayload && payload.hasFlag(SCREEN_FLAG_AGENT_THINKING) && (uint32_t)(now - lastWriteMs) >= VOICE_REPLY_MS) {
+      payload.flags = (uint8_t)(payload.flags & ~SCREEN_FLAG_AGENT_THINKING);
+    }
+    // The answer to the person's own hold lasts while bit 5 does, at most
+    // the speaking hold's 60 s; then the usual idle and fade over the agent.
+    if (voice == VOICE_SCREEN_ANSWER &&
+        (!payload.hasFlag(SCREEN_FLAG_AGENT_SPEAKING) || (uint32_t)(now - voiceAtMs) >= SPEAKING_HOLD_MAX_MS)) {
+      voice = VOICE_SCREEN_NONE;
+      agentShown = true;
+      askedWake = false;
+      holdMs = IDLE_MS;
+      idleAtMs = now;
+    }
     // holdsAwake() also ends a hold at its cap: call it every pass.
     const bool held = speaking.holdsAwake(now) && agentShown && scene != OLED_SCENE_OFF;
     if (speakingHeld && !held && agentShown && scene != OLED_SCENE_OFF) idleAtMs = now;  // then idle and fade
@@ -469,10 +624,12 @@ struct ScreenState {
       uint8_t next = agentScene();
       if (next != scene) repaint(next, now);
     }
-    if (scene != OLED_SCENE_OFF && !inFlight && !speakingHeld && (uint32_t)(now - idleAtMs) >= holdMs + FADE_MS) {
+    if (scene != OLED_SCENE_OFF && !inFlight && !speakingHeld && !voiceHolds() &&
+        (uint32_t)(now - idleAtMs) >= holdMs + FADE_MS) {
       scene = OLED_SCENE_OFF;
       demo = false;
       agentShown = false;
+      voice = VOICE_SCREEN_NONE;
     }
   }
 

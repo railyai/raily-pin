@@ -3,7 +3,7 @@
 # press and feedback gates, SHA-256/HMAC, server pass, secret record,
 # bind window, device_info, BLE bond table and the bond files' CCCD field, the held press of bonding stage 2, screen_state payload, vibration rhythms,
 # the DA7280 haptic driver on Wire and on bit-banged I2C and its D0 fallback, the OLED screen
-# state (press, screen_state, fall, «found you», the agent's counts and notifications), the mascot record and composer,
+# state (press, screen_state, fall, «found you», the agent's counts and notifications, voice from the pin), the mascot record and composer,
 # serial `i`'s screen_state bench object), the Keyring Air sleep and button (idle_sleep.h) and ship mode (ship_mode.h), battery telemetry (battery_curve.h) and the VDD discharge log (vdd_log.h), voice from the pin (adpcm.h + the golden vectors, voice_frame.h, voice_ring.h, voice_board.h, voice_gesture.h), the Air factory test's checks. No Arduino toolchain needed: g++, and python3 with
 # Pillow for the OLED golden frames and asset checks.
 set -euo pipefail
@@ -80,6 +80,11 @@ g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
 g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
     test_screen_notify.cpp -o "$BUILD_DIR/test_screen_notify"
 "$BUILD_DIR/test_screen_notify"
+# Voice from the pin on the screen (0.4.4): pressed, speak, thinking, the
+# answer, the failures' scenes, bit 6.
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+    test_screen_voice.cpp -o "$BUILD_DIR/test_screen_voice"
+"$BUILD_DIR/test_screen_voice"
 g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
     test_mascot_record.cpp -o "$BUILD_DIR/test_mascot_record"
 "$BUILD_DIR/test_mascot_record"

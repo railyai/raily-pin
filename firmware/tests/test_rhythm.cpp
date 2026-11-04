@@ -418,7 +418,59 @@ static void testRawAckPath() {
   expect(b.led == 0x42 && rhythmForEventAck(b.rhythm) == RHYTHM_NONE, "an unknown byte is silent");
 }
 
+// The motor never runs with the mic on (voice from the pin, 0.4.4).
+static void testMicRunning() {
+  {
+    RhythmPlayer p = {};
+    p.trigger(RHYTHM_ERROR, 1000);
+    expect(p.tick(1100), "▬▬▬ is running");
+    p.setMicRunning(true, 1100);
+    expect(!p.tick(1100) && !p.active, "mic on: a running pattern stops at once");
+    bool any = false;
+    for (uint32_t now = 1100; now < 4000; now++) any = p.tick(now) || any;
+    expect(!any, "and never resumes while the mic runs");
+  }
+  {
+    RhythmPlayer p = {};
+    p.trigger(RHYTHM_SENT, 1000);
+    p.trigger(RHYTHM_RESULT, 1100);  // waits for the 800 ms start window
+    expect(p.pending == RHYTHM_RESULT, "a pattern is pending");
+    p.setMicRunning(true, 1200);
+    bool any = false;
+    for (uint32_t now = 1200; now < 3000; now++) any = p.tick(now) || any;
+    expect(!any && p.pending == RHYTHM_NONE, "mic on: the pending pattern never starts late");
+  }
+  {
+    RhythmPlayer p = {};
+    p.setMicRunning(true, 0);
+    const RhythmSignal acks[] = {RHYTHM_SENT, RHYTHM_RESULT, RHYTHM_ERROR, RHYTHM_FOUND};
+    bool any = false;
+    uint32_t now = 1000;
+    for (RhythmSignal ack : acks) {
+      p.trigger(ack, now);
+      for (uint32_t end = now + 2000; now < end; now++) any = p.tick(now) || any;
+    }
+    expect(!any && p.pending == RHYTHM_NONE, "ack 1, 3, 4 and 0x11 with the mic on: nothing plays or queues");
+    p.setMicRunning(false, now);
+    bool stale = false;
+    for (uint32_t end = now + 2000; now < end; now++) stale = p.tick(now) || stale;
+    expect(!stale, "mic off: a dropped ack does not play late");
+    p.trigger(RHYTHM_SENT, now);
+    expect(p.tick(now) && p.tick(now + 79) && !p.tick(now + 80), "the ▮ at END plays whole, after mic off");
+  }
+  {
+    RhythmPlayer p = {};
+    p.setMicRunning(true, 0);
+    p.triggerOverMic(RHYTHM_SENT, 1000);
+    expect(p.tick(1000) && !p.tick(1080), "the short hold's own START cue still plays");
+    p.setQuietHours(true, 2000);
+    p.triggerOverMic(RHYTHM_SENT, 2000);
+    expect(!p.tick(2000), "and quiet hours silence it");
+  }
+}
+
 int main() {
+  testMicRunning();
   testRawAckPath();
   testMapping();
   testPatternEdges();

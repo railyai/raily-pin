@@ -273,6 +273,32 @@ def bang(big):
     return draw
 
 
+def mic_level(levels):
+    """The pack's g_mic_level (k11-listen): the microphone in the glyph zone,
+    a bar of sound on either side of it at each level."""
+    def draw(fb):
+        cx, cy = ZONE_CENTER
+        _put_c(fb, _sprite('mic'), cx, cy)
+        d = ImageDraw.Draw(fb)
+        for side in (-1, 1):
+            for i, lv in enumerate(levels):
+                bx = int(cx + side * (8 + i * 4))
+                hh = max(1, int(lv))
+                d.rectangle([bx, cy - hh, bx + 1, cy + hh], fill=1)
+    return draw
+
+
+def think(n):
+    """The pack's o_think (a01-think): n of three dots rising from the head
+    to the upper right, the thought bubble's trail."""
+    def draw(fb):
+        x, y, s = MASCOT
+        d = ImageDraw.Draw(fb)
+        for px, py, r in [(x + s - 6, y + 7, 1), (x + s - 2, y + 3, 1), (x + s + 3, y, 2)][:n]:
+            d.ellipse([px - r, py - r, px + r, py + r], fill=1)
+    return draw
+
+
 def status_dot(fb):
     """The pack's status-row notification dot (oled.py status_row, dot=True)."""
     ImageDraw.Draw(fb).rectangle([W - 20, 2, W - 18, 4], fill=1)
@@ -375,7 +401,12 @@ WORDS = {
     'open_app': {'ru': ('открой', 'приложение'), 'en': ('open', 'the app'), 'es': ('abre', 'la app'),
                  'pt': ('abra', 'o app')},
     'paused': {'ru': ('на паузе',), 'en': ('paused',), 'es': ('en pausa',), 'pt': ('pausado',)},
-    'speaking': {'ru': ('говорю',), 'en': ('talking',), 'es': ('hablando',), 'pt': ('falando',)},
+    # Voice from the pin (owner, 2026-11-03): the pin has no speaker, so
+    # while the agent answers the screen says the answer is on the phone.
+    'speaking': {'ru': ('ответ в', 'телефоне'), 'en': ('answer', 'on phone'), 'es': ('mira', 'el móvil'),
+                 'pt': ('resposta', 'no celular')},
+    'speak': {'ru': ('говори',), 'en': ('speak',), 'es': ('habla',), 'pt': ('fale',)},
+    'thinking': {'ru': ('думаю',), 'en': ('thinking',), 'es': ('pensando',), 'pt': ('pensando',)},
     # The fall: «ой» in the bubble, then «было / больно» in the word row.
     # The bubble already says the interjection, so the row says the rest.
     'ouch': {'ru': ('ой',), 'en': ('ow',), 'es': ('ay',), 'pt': ('ai',)},
@@ -506,6 +537,18 @@ def _talk_frames():
     return frames
 
 
+def _listen_frames():
+    """The pack's f_listen (k11-listen): the mascot looks up and listens,
+    the mic's sound bars move. Fixed levels: the pin draws no live level."""
+    return [F(100, 'up', glyphs=[mic_level(lv)]) for lv in ([3, 6, 2], [7, 4, 5], [5, 9, 3], [2, 5, 7])]
+
+
+def _think_frames():
+    """The pack's f_think (a01-think): eyes up and to the right, the dots
+    come one by one, then hold."""
+    return [F(300, 'upright', overlays=[think(n)]) for n in (1, 2, 3, 3)]
+
+
 # flags: loop = the frames repeat (else the last one holds); glass = the
 # outline material whatever the mascot; default_look = the default pebble
 # (an unowned pin has no owner's mascot, spec §15); blank = nothing lit;
@@ -515,7 +558,9 @@ def _talk_frames():
 # press); 8-11 come from screen_state (PR 2/3); 12 is the fall (PR 5);
 # 13 is «found you» (event_ack 0x11, the press-again notice); 14-17 are the
 # agent's counts from a trusted screen_state (found with its digit, found
-# on a self-wake, nobody, looking); 18-23 the notifications (notify 2-7).
+# on a self-wake, nobody, looking); 18-23 the notifications (notify 2-7);
+# 24-25 voice from the pin (0.4.4): «speak» while the mic is on, «thinking»
+# after the release until the answer (speaking, 11) or 10 s.
 SCENES = [
     dict(name='off', flags={'blank'}, word=None, frames=[F(1000, 'open')]),
     dict(name='nothing_known', flags={'loop'}, word=None, frames=[F(600, 'open'), F(120, 'blink')]),
@@ -549,6 +594,8 @@ SCENES = [
     dict(name='talks', flags=set(), word='talks', frames=_notify_frames('doc')),
     dict(name='door', flags=set(), word='door', frames=_notify_frames('door')),
     dict(name='question', flags={'loop'}, word='question', frames=_question_frames()),
+    dict(name='talk', flags={'loop'}, word='speak', frames=_listen_frames()),
+    dict(name='thinking', flags={'loop'}, word='thinking', frames=_think_frames()),
 ]
 
 
@@ -570,5 +617,5 @@ DEMO_LETTERS = {'off': 'o', 'nothing_known': 'k', 'pressed': 'p', 'searching': '
                 'error': 'e', 'no_link': 'l', 'set_me_up': 'u', 'watch': 'w', 'paused': 'z',
                 'needs_setup': 'n', 'speaking': 't', 'fell': 'f', 'found_you': 'y', 'found': 'g',
                 'found_self': 'j', 'nobody': 'b', 'looking': 'v', 'request': 'q', 'accepted': 'a',
-                'report': 'd', 'talks': 'h', 'door': 'i', 'question': '?'}
+                'report': 'd', 'talks': 'h', 'door': 'i', 'question': '?', 'talk': '!', 'thinking': 'c'}
 DEMO_MODEST_LETTER = 'm'

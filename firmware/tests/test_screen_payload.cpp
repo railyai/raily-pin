@@ -116,6 +116,14 @@ static void accessors() {
     expect(q.drawsWords() == words[i], "words only for ru, en, es, pt");
   }
   expect(SCREEN_FLAGS_TRUSTED_ONLY == 0x13, "trusted-only flags are bits 0, 1, 4");
+  expect(SCREEN_FLAG_AGENT_THINKING == 0x40 && SCREEN_FLAGS_KNOWN == 0x7F, "bit 6 is thinking, bit 7 reserved");
+  // Thinking passes a plaintext link like speaking: it only keeps the
+  // pin's own «thinking» up, bounded in ScreenState.
+  const uint8_t thinking[SCREEN_PAYLOAD_LENGTH] = {0x01, 0x01, 0x03, 0x00, 0x00, 0x00, 0x7F, 0x00, 0x01};
+  ScreenPayload plain = SENTINEL;
+  expect(parseScreenPayload(thinking, SCREEN_PAYLOAD_LENGTH, false, &plain) == ScreenPayloadError::ok &&
+             plain.flags == 0x6C && plain.hasFlag(SCREEN_FLAG_AGENT_THINKING) && plain.found == 0,
+         "plaintext: thinking, speaking, modest, disabled pass; wake, quiet, always-on and counts go");
 }
 
 static void acceptedBoundaries() {
@@ -124,7 +132,8 @@ static void acceptedBoundaries() {
   expectAcceptedAt(2, 0xFF, "found withheld");
   expectAcceptedAt(3, 99, "looking 99");
   expectAcceptedAt(3, 0xFF, "looking withheld");
-  expectAcceptedAt(6, 0x3F, "every known flag");
+  expectAcceptedAt(6, 0x7F, "every known flag (bit 6 thinking since 0.4.4)");
+  expectAcceptedAt(6, SCREEN_FLAG_AGENT_THINKING, "thinking alone");
   expectAcceptedAt(7, 0x52, "fold/glass is the last look");
   expectAcceptedAt(8, SCREEN_LOCALE_AR, "locale 5 is the last");
   for (uint8_t shape = 0; shape < SCREEN_SHAPE_COUNT; shape++) {
@@ -166,8 +175,8 @@ static void rejections() {
   expectRejectedAt(3, 100, ScreenPayloadError::badLooking, "looking 100");
   expectRejectedAt(3, 254, ScreenPayloadError::badLooking, "looking 254");
   expectRejectedAt(4, 8, ScreenPayloadError::badNotify, "notify 8");
-  expectRejectedAt(6, 0x40, ScreenPayloadError::reservedFlag, "flag bit 6");
   expectRejectedAt(6, 0x80, ScreenPayloadError::reservedFlag, "flag bit 7");
+  expectRejectedAt(6, 0xC0, ScreenPayloadError::reservedFlag, "bit 7 with bit 6");
   expectRejectedAt(6, 0xFF, ScreenPayloadError::reservedFlag, "all flag bits");
   expectRejectedAt(7, 0x60, ScreenPayloadError::badShape, "shape 6");
   expectRejectedAt(7, 0xF0, ScreenPayloadError::badShape, "shape 15");

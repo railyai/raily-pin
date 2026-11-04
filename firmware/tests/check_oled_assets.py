@@ -16,7 +16,9 @@
    bit outside the battery icon (x 52-63, y 0-6): the firmware's status row
    is the link icon only until the battery characteristic ships. The
    agent's counts (found, found_self, nobody, looking) likewise against
-   k05-found, a02-found, k06-nothing and a03-looking.
+   k05-found, a02-found, k06-nothing and a03-looking, and the voice
+   scenes (talk, thinking) against k11-listen and a01-think above the
+   word row.
 
 The site and design checks need the main repository; the public raily-pin
 mirror has no frontend or docs and skips them, saying so.
@@ -162,10 +164,16 @@ COUNT_DESIGN = [(f"found-f{i}-pebble-satin-ru-3", f"k05-found-f{i}") for i in ra
     ("talks-f1-pebble-satin-ru", "w02-negotiation-f1"), ("door-f1-pebble-satin-ru", "w01-door-f1"),
     ("question-f1-pebble-satin-ru", "a04-question-f1"), ("question-f2-pebble-satin-ru", "a04-question-f2"),
     ("report-f1-pebble-satin-ru", "a05-report-f1"), ("report-f2-pebble-satin-ru", "a05-report-f2")]
+# Voice from the pin (0.4.4): «speak» is the pack's k11-listen and
+# «thinking» its a01-think (the pack's f4 repeats f3), compared above the
+# word row: the pack says «слушаю» where the owner chose «говори».
+VOICE_DESIGN = [(f"talk-f{i}-pebble-satin-ru", f"k11-listen-f{i}") for i in range(1, 5)] + [
+    (f"thinking-f{i}-pebble-satin-ru", f"a01-think-f{min(i, 3)}") for i in range(1, 5)]
+COUNT_DESIGN += VOICE_DESIGN
 # The report's word is the spec's «отчёт»: the pack's «отчёт готов» is 66 px,
 # over the 60 px row, so the report is compared above the word row only.
 WORD_ROW_Y = 98
-ABOVE_WORD_ROW = {"report-f1-pebble-satin-ru", "report-f2-pebble-satin-ru"}
+ABOVE_WORD_ROW = {"report-f1-pebble-satin-ru", "report-f2-pebble-satin-ru"} | {stem for stem, _ in VOICE_DESIGN}
 
 
 def check_count_design(failures):
@@ -190,8 +198,9 @@ def check_count_design(failures):
         if diff:
             failures.append(f"count design: {stem} differs from concept/raw/{pack.name} ({diff} pixels)")
     if len(failures) == before:
-        print("PASS the counts and notifications match the approved design (k05, a02, k06, a03, a04-a07, w01, w02) "
-              "bit for bit outside the battery icon (the report above its word row)")
+        print("PASS the counts, notifications and voice scenes match the approved design (k05, a02, k06, a03, "
+              "a04-a07, w01, w02, k11, a01) bit for bit outside the battery icon (the report, speak and thinking "
+              "above their word row)")
 
 
 def check_timing(failures):

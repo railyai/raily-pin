@@ -996,6 +996,25 @@ def golden_cases(data):
     case('question-f2-cube-glass-en-shift', 'question', 1, 'cube', 'glass', shift=(1, 2), locale=2)
     case('question-f1-lens-jelly', 'question', 0, 'lens', 'jelly')
     case('request-f1-pebble-satin-ru-modest', 'request', 0, locale=1, modest=True)
+    # Voice from the pin (0.4.4): «speak» and «thinking» on other looks,
+    # shifted, unlinked, ar icons only, modest; «speaking»'s two lines in
+    # every locale on another frame.
+    for name in ('talk', 'thinking'):   # every frame in ru: the design check compares them with the pack
+        for fi in range(1, data['scenes'][names.index(name)]['count']):
+            case('%s-f%d-pebble-satin-ru' % (name, fi + 1), name, fi, locale=1)
+    case('talk-f2-cube-jelly-en-shift', 'talk', 1, 'cube', 'jelly', shift=(-2, 2), locale=2)
+    case('talk-f3-loop-glass-es', 'talk', 2, 'loop', 'glass', locale=3)
+    case('talk-f4-fold-satin-pt-shift', 'talk', 3, 'fold', 'satin', shift=(2, -1), locale=4)
+    case('talk-f1-pebble-satin-ar', 'talk', 0, locale=5)
+    case('talk-f1-drop-jelly-ru-modest', 'talk', 0, 'drop', 'jelly', locale=1, modest=True)
+    case('thinking-f3-lens-jelly-ru-shift', 'thinking', 2, 'lens', 'jelly', shift=(2, -1), locale=1)
+    case('thinking-f2-drop-glass-en', 'thinking', 1, 'drop', 'glass', locale=2)
+    case('thinking-f4-cube-satin-es-unlinked', 'thinking', 3, 'cube', 'satin', linked=False, locale=3)
+    case('thinking-f3-pebble-satin-ar', 'thinking', 2, locale=5)
+    case('thinking-f3-fold-jelly-pt-modest', 'thinking', 2, 'fold', 'jelly', locale=4, modest=True)
+    for li, locale in enumerate(SC.WORD_LOCALES):
+        case('speaking-f3-pebble-satin-%s' % locale, 'speaking', 2, locale=li + 1)
+    case('speaking-f2-pebble-satin-ar', 'speaking', 1, locale=5)
     # The unseen-notification dot on other scenes (it never moves), and not
     # in modest mode or without the status row.
     case('watch-f1-pebble-satin-ru-dot', 'watch', 0, locale=1, dot=True)

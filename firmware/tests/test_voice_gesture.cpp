@@ -21,27 +21,49 @@ static void expect(bool ok, const char* what) {
 static const uint32_t T = VOICE_TALK_HOLD_MS;
 static const uint32_t L = VOICE_LONG_HOLD_MS;
 
-static const VoiceLink ARMED = {true, true, true};
-static const VoiceLink CONNECTED_NOT_SUBSCRIBED = {true, true, false};
-static const VoiceLink NO_PHONE = {true, false, false};
-static const VoiceLink NO_MIC_CONNECTED = {false, true, true};  // armed is meaningless without a mic
-static const VoiceLink NO_MIC_NO_PHONE = {false, false, false};
+static const VoiceLink ARMED = {true, true, true, true};
+static const VoiceLink CONNECTED_NOT_SUBSCRIBED = {true, true, false, true};
+static const VoiceLink NO_PHONE = {true, false, false, true};
+static const VoiceLink UNOWNED_NO_PHONE = {true, false, false, false};
+static const VoiceLink UNOWNED_CONNECTED = {true, true, false, false};
+static const VoiceLink NO_MIC_CONNECTED = {false, true, true, true};  // armed is meaningless without a mic
+static const VoiceLink NO_MIC_NO_PHONE = {false, false, false, true};
 
 static bool is(const VoiceGestureOut& out, uint16_t actions) { return out.actions == actions; }
 
 // A whole press: began at `at`, released `heldMs` later, with ticks every
-// 20 ms in between (as loop() would). Returns the OR of every action.
-static uint16_t press(const VoiceLink& link, uint32_t at, uint32_t heldMs, uint8_t* endReason = 0) {
+// 20 ms in between (as loop() would). Returns the OR of every action; `cue`
+// gets the one cue the press ended with (VOICE_CUE_NONE if none).
+static uint16_t press(const VoiceLink& link, uint32_t at, uint32_t heldMs, uint8_t* endReason = 0,
+                      uint8_t* cue = 0) {
   VoiceGesture g = voiceGesture();
-  uint16_t all = g.holdBegan(at, link).actions;
+  uint8_t cues = 0, last = VOICE_CUE_NONE;
+  const VoiceGestureOut began = g.holdBegan(at, link);
+  uint16_t all = began.actions;
+  if (began.cue != VOICE_CUE_NONE) cues++;
   for (uint32_t t = 20; t < heldMs; t += 20) {
     const VoiceGestureOut out = g.tick(at + t, link);
     all |= out.actions;
     if (out.has(VOICE_ACT_SEND_END) && endReason) *endReason = out.endReason;
+    if (out.cue != VOICE_CUE_NONE) {
+      cues++;
+      last = out.cue;
+    }
   }
   const VoiceGestureOut out = g.holdEnded(at + heldMs, link);
   if (out.has(VOICE_ACT_SEND_END) && endReason) *endReason = out.endReason;
+  if (out.cue != VOICE_CUE_NONE) {
+    cues++;
+    last = out.cue;
+  }
+  if (cue) *cue = cues <= 1 ? last : 0xFF;  // 0xFF: more than one cue for one press
   return all | out.actions;
+}
+
+static uint8_t cueOf(const VoiceLink& link, uint32_t heldMs) {
+  uint8_t cue = 0xFE;
+  press(link, 0, heldMs, 0, &cue);
+  return cue;
 }
 
 static void testConstants() {
@@ -79,6 +101,7 @@ static void testTalk() {
   const VoiceGestureOut end = g.holdEnded(5000 + L + 600, ARMED);
   expect(is(end, VOICE_ACT_MIC_OFF | VOICE_ACT_SEND_END) && end.endReason == VOICE_END_RELEASED && !g.micOn(),
          "release: mic off, END 0, no scan");
+  expect(end.cue == VOICE_CUE_SENT, "release: the SENT cue (▮ and «thinking»)");
   expect(g.nextDeadlineMs(5000 + L + 600) == VOICE_NO_DEADLINE, "idle: no deadline");
 
   // loop() late: the release arrives before the tick that would have started.
@@ -87,6 +110,96 @@ static void testTalk() {
   const VoiceGestureOut both = late.holdEnded(T + 50, ARMED);
   expect(is(both, VOICE_ACT_SEND_START | VOICE_ACT_MIC_OFF | VOICE_ACT_SEND_END) && both.endReason == 0,
          "a late release past the threshold is a talk (START then END), not a scan");
+}
+
+static void testCues() {
+  expect(cueOf(ARMED, T - 1) == VOICE_CUE_NONE && cueOf(NO_PHONE, 30) == VOICE_CUE_NONE,
+         "a tap that scans has no cue: the scan's own screen follows");
+  expect(cueOf(ARMED, L + 500) == VOICE_CUE_SENT, "a talk released: SENT");
+  expect(cueOf(ARMED, VOICE_UTTERANCE_CAP_MS + 500) == VOICE_CUE_SENT, "a talk ended by the 60 s cap: SENT, once");
+  expect(cueOf(NO_PHONE, L) == VOICE_CUE_NO_LINK && cueOf(NO_PHONE, L + 3000) == VOICE_CUE_NO_LINK,
+         "2 s on a voice pin with no phone: «no link» (0.4.4)");
+  expect(cueOf(CONNECTED_NOT_SUBSCRIBED, L) == VOICE_CUE_DIDNT_WORK,
+         "2 s connected but voice not on: «didn't work», no motor (0.3.0)");
+  expect(cueOf(NO_MIC_CONNECTED, L) == VOICE_CUE_DIDNT_WORK && cueOf(NO_MIC_NO_PHONE, L) == VOICE_CUE_DIDNT_WORK,
+         "2 s on a board without a mic: «didn't work», with or without a phone (0.3.0)");
+  if (T < L) {
+    expect(cueOf(NO_PHONE, T) == VOICE_CUE_NO_LINK, "a talk hold under 2 s with no phone: «no link»");
+  }
+  VoiceGesture lost = voiceGesture();
+  lost.holdBegan(0, ARMED);
+  lost.tick(T, ARMED);
+  const VoiceGestureOut dropped = lost.tick(T + 40, NO_PHONE);
+  expect(dropped.cue == VOICE_CUE_NO_LINK && dropped.has(VOICE_ACT_FAIL), "the link lost mid-talk: «no link»");
+  VoiceGesture unsub = voiceGesture();
+  unsub.holdBegan(0, ARMED);
+  expect(unsub.tick(T / 2, CONNECTED_NOT_SUBSCRIBED).cue == VOICE_CUE_NO_LINK,
+         "unsubscribed in the pre-roll: «no link» (the link no longer carries voice)");
+
+  for (uint8_t reason = VOICE_END_OVERFLOW; reason <= VOICE_END_LOW_BATTERY; reason++) {
+    VoiceGesture g = voiceGesture();
+    g.holdBegan(0, ARMED);
+    g.tick(T, ARMED);
+    const VoiceGestureOut out = g.stop(reason);
+    expect(out.cue == VOICE_CUE_TALK_FAILED && out.has(VOICE_ACT_FAIL) && out.endReason == reason,
+           "the ring full or low battery: a failed talk (▬▬▬), END 2 / 3");
+  }
+  for (uint8_t why = 0; why < 6; why++) {
+    VoiceGesture g = voiceGesture();
+    g.holdBegan(0, ARMED);
+    g.tick(T, ARMED);
+    const VoiceGestureOut out = g.stop(VOICE_END_PHONE_STOP, why);
+    const bool spent = why == VOICE_STOP_MINUTES_SPENT;
+    expect(out.endReason == VOICE_END_PHONE_STOP && out.has(VOICE_ACT_SEND_END) &&
+               out.cue == (spent ? VOICE_CUE_SEE_PHONE : VOICE_CUE_TALK_FAILED) &&
+               out.has(VOICE_ACT_FAIL) == !spent,
+           spent ? "phone STOP 1 (minutes spent): «see the phone» (▬), END 4, no «didn't work»"
+                 : "phone STOP 0, 2-5: a failed talk (▬▬▬), END 4");
+  }
+  VoiceGesture early = voiceGesture();
+  early.holdBegan(0, ARMED);
+  const VoiceGestureOut spentEarly = early.stop(VOICE_END_PHONE_STOP, VOICE_STOP_MINUTES_SPENT);
+  expect(is(spentEarly, VOICE_ACT_MIC_OFF | VOICE_ACT_DROP_AUDIO) && spentEarly.cue == VOICE_CUE_SEE_PHONE,
+         "phone STOP 1 in the pre-roll: the pre-roll dropped, «see the phone»");
+  VoiceGesture tap = voiceGesture();
+  expect(tap.holdBegan(0, ARMED).cue == VOICE_CUE_NONE && tap.tick(T, ARMED).cue == VOICE_CUE_NONE,
+         "press-down and START carry no cue");
+}
+
+// An unowned pin keeps 0.4.3: «didn't work», no motor, never «no link».
+static void testUnowned() {
+  expect(cueOf(UNOWNED_NO_PHONE, L) == VOICE_CUE_DIDNT_WORK && cueOf(UNOWNED_NO_PHONE, L + 3000) == VOICE_CUE_DIDNT_WORK,
+         "2 s unowned with no phone: «didn't work», not «no link»");
+  expect(press(UNOWNED_NO_PHONE, 0, L) == VOICE_ACT_FAIL, "and no scan");
+  expect(cueOf(UNOWNED_CONNECTED, L) == VOICE_CUE_DIDNT_WORK, "2 s unowned and connected: «didn't work»");
+  expect(cueOf(UNOWNED_NO_PHONE, T - 1) == VOICE_CUE_NONE && press(UNOWNED_NO_PHONE, 0, T - 1) == VOICE_ACT_SCAN,
+         "a tap on an unowned pin still scans");
+  if (T < L) {
+    expect(cueOf(UNOWNED_NO_PHONE, T) == VOICE_CUE_DIDNT_WORK && press(UNOWNED_NO_PHONE, 0, T) == VOICE_ACT_FAIL,
+           "a talk hold under 2 s, unowned with no phone: «didn't work», no scan (0.4.3)");
+  }
+}
+
+// A STOP: live, after the release, or dropped.
+static void testStopRoute() {
+  const uint8_t id = 7;
+  const uint16_t forLive = (uint16_t)(id + 1);
+  expect(voiceStopRoute(forLive, id, true, false, false) == VOICE_STOP_LIVE, "STOP for the live utterance, mic on: ends the talk");
+  expect(voiceStopRoute(forLive, id, false, true, false) == VOICE_STOP_LATE, "after the release, the reply awaited: the outcome");
+  expect(voiceStopRoute(forLive, id, false, false, false) == VOICE_STOP_DROP, "idle, no reply awaited: dropped");
+  expect(voiceStopRoute(0, id, true, true, false) == VOICE_STOP_DROP, "no STOP: nothing");
+  expect(voiceStopRoute((uint16_t)(id + 2), id, true, false, false) == VOICE_STOP_DROP &&
+             voiceStopRoute((uint16_t)(id + 2), id, false, true, false) == VOICE_STOP_DROP,
+         "a STOP for another utterance is dropped, live or late");
+  expect(voiceStopRoute(forLive, id, true, false, true) == VOICE_STOP_DROP &&
+             voiceStopRoute(forLive, id, false, true, true) == VOICE_STOP_DROP,
+         "a bench hold on the serial sink takes no STOP");
+  expect(voiceStopRoute(256, 255, false, true, false) == VOICE_STOP_LATE, "utterance 255 (stored as 256) matches");
+  expect(voiceStopCue(VOICE_STOP_MINUTES_SPENT) == VOICE_CUE_SEE_PHONE, "late STOP 1: «see the phone»");
+  bool failed = true;
+  const uint8_t others[] = {0, 2, 3, 4, 5};
+  for (uint8_t why : others) failed = failed && voiceStopCue(why) == VOICE_CUE_TALK_FAILED;
+  expect(failed, "late STOP, any other reason: a failed talk (▬▬▬)");
 }
 
 static void testUnarmedHolds() {
@@ -109,16 +222,16 @@ static void testUnarmedHolds() {
 static void testCapAndStops() {
   uint8_t reason = 0xFF;
   const uint16_t all = press(ARMED, 100, VOICE_UTTERANCE_CAP_MS + 5000, &reason);
-  expect((all & VOICE_ACT_SEND_END) && (all & VOICE_ACT_FAIL) && reason == VOICE_END_CAP && !(all & VOICE_ACT_SCAN),
-         "the 60 s cap: END 1 and «didn't work», no scan");
+  expect((all & VOICE_ACT_SEND_END) && !(all & VOICE_ACT_FAIL) && reason == VOICE_END_CAP && !(all & VOICE_ACT_SCAN),
+         "the 60 s cap: END 1, a normal end (0.4.4: no «didn't work»), no scan");
 
   VoiceGesture g = voiceGesture();
   g.holdBegan(0, ARMED);
   g.tick(T, ARMED);
   expect(is(g.tick(VOICE_UTTERANCE_CAP_MS - 1, ARMED), VOICE_ACT_NONE), "no cap before 60 s");
   const VoiceGestureOut capped = g.tick(VOICE_UTTERANCE_CAP_MS, ARMED);
-  expect(is(capped, VOICE_ACT_MIC_OFF | VOICE_ACT_SEND_END | VOICE_ACT_FAIL) && capped.endReason == VOICE_END_CAP &&
-             !g.micOn() && g.held(),
+  expect(is(capped, VOICE_ACT_MIC_OFF | VOICE_ACT_SEND_END) && capped.endReason == VOICE_END_CAP &&
+             capped.cue == VOICE_CUE_SENT && !g.micOn() && g.held(),
          "the cap at exactly 60 s from press-down: mic off while still held");
   expect(is(g.holdEnded(VOICE_UTTERANCE_CAP_MS + 10, ARMED), VOICE_ACT_NONE), "the release after the cap does nothing");
 
@@ -261,7 +374,7 @@ static void testProperty() {
   uint32_t starts = 0, ends = 0, overflows = 0, scans = 0, fails = 0;
   for (int step = 0; step < 100000; step++) {
     const bool micBefore = g.micOn();
-    VoiceGestureOut out = {0, 0};
+    VoiceGestureOut out = {0, 0, 0};
     const uint32_t event = rnd(100);
     bool fromBegan = false, fromEnded = false;
     if (event < 8) {  // the button (sometimes a repeated edge)
@@ -331,6 +444,9 @@ int main() {
   testTap();
   testTalk();
   testUnarmedHolds();
+  testCues();
+  testUnowned();
+  testStopRoute();
   testCapAndStops();
   testLinkLoss();
   testWrapAndRepeats();
