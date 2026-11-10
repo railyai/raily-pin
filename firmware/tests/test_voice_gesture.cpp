@@ -246,10 +246,87 @@ static void testCapAndStops() {
 
   VoiceGesture p = voiceGesture();
   p.holdBegan(0, ARMED);
-  expect(is(p.stop(VOICE_END_OVERFLOW), VOICE_ACT_MIC_OFF | VOICE_ACT_DROP_AUDIO | VOICE_ACT_FAIL),
-         "a stop before START drops the pre-roll: there is no utterance to end");
+  expect(is(p.stop(VOICE_END_PHONE_STOP), VOICE_ACT_MIC_OFF | VOICE_ACT_DROP_AUDIO | VOICE_ACT_FAIL) &&
+             is(p.holdEnded(T / 2, ARMED), VOICE_ACT_NONE),
+         "a phone STOP before START drops the pre-roll: there is no utterance to end, the release does nothing");
   VoiceGesture idle = voiceGesture();
   expect(is(idle.stop(VOICE_END_PHONE_STOP), VOICE_ACT_NONE) && !idle.micOn(), "STOP while idle never turns the mic on");
+}
+
+// A full ring (END 2) or a critical battery (END 3) in the pre-roll: the mic
+// goes off with no cue, a tap still scans, the threshold fails the talk.
+static void testPinStopInPreroll() {
+  for (uint8_t reason = VOICE_END_OVERFLOW; reason <= VOICE_END_LOW_BATTERY; reason++) {
+    const bool battery = reason == VOICE_END_LOW_BATTERY;
+    VoiceGesture tap = voiceGesture();
+    tap.holdBegan(100, ARMED);
+    const VoiceGestureOut muted = tap.stop(reason);
+    expect(is(muted, VOICE_ACT_MIC_OFF | VOICE_ACT_DROP_AUDIO) && muted.cue == VOICE_CUE_NONE && !tap.micOn() &&
+               tap.held() && tap.state == VOICE_GESTURE_MUTED,
+           battery ? "low battery in the pre-roll: mic off, pre-roll dropped, no cue, no «didn't work» yet"
+                   : "ring full in the pre-roll: mic off, pre-roll dropped, no cue, no «didn't work» yet");
+    expect(is(tap.stop(reason), VOICE_ACT_NONE) && is(tap.stop(VOICE_END_PHONE_STOP, 2), VOICE_ACT_NONE) &&
+               tap.state == VOICE_GESTURE_MUTED,
+           "a repeated stop (the pin's or the phone's) after the mic went off is ignored");
+    expect(tap.nextDeadlineMs(100 + T / 2) == T - T / 2, "the threshold stays a deadline (idle sleep wakes for it)");
+    expect(is(tap.tick(100 + T - 1, ARMED), VOICE_ACT_NONE), "nothing before the threshold");
+    const VoiceGestureOut scan = tap.holdEnded(100 + T - 1, ARMED);
+    expect(is(scan, VOICE_ACT_SCAN) && scan.cue == VOICE_CUE_NONE && !tap.held(),
+           battery ? "low battery + tap: the scan, no fail cue" : "ring full + tap: the scan, no fail cue");
+
+    uint8_t cue = 0xFE;
+    VoiceGesture hold = voiceGesture();
+    uint16_t all = hold.holdBegan(0, ARMED).actions;
+    uint8_t cues = 0;
+    for (uint32_t t = 20; t < L + 500; t += 20) {
+      const VoiceGestureOut o = t == 40 ? hold.stop(reason) : hold.tick(t, ARMED);
+      all |= o.actions;
+      if (o.cue != VOICE_CUE_NONE) {
+        cues++;
+        cue = o.cue;
+        expect(t >= T && o.has(VOICE_ACT_FAIL), "the fail comes at the threshold, not before");
+      }
+    }
+    const VoiceGestureOut release = hold.holdEnded(L + 500, ARMED);
+    expect(cues == 1 && cue == VOICE_CUE_TALK_FAILED && (all & VOICE_ACT_FAIL),
+           battery ? "low battery + hold past the threshold: one «didn't work» (▬▬▬) at the threshold"
+                   : "ring full + hold past the threshold: one «didn't work» (▬▬▬) at the threshold");
+    expect(!(all & (VOICE_ACT_SEND_START | VOICE_ACT_SEND_END | VOICE_ACT_SCAN)),
+           "no START, no END, no scan: only PRESS went out, as for a tap");
+    expect(is(release, VOICE_ACT_NONE) && release.cue == VOICE_CUE_NONE, "the release after that does nothing");
+
+    VoiceGesture late = voiceGesture();
+    late.holdBegan(0, ARMED);
+    late.stop(reason);
+    const VoiceGestureOut lateEnd = late.holdEnded(T + 50, ARMED);
+    expect(is(lateEnd, VOICE_ACT_FAIL) && lateEnd.cue == VOICE_CUE_TALK_FAILED,
+           "a release past the threshold before loop() ticked: the fail, not a scan");
+
+    VoiceGesture lost = voiceGesture();
+    lost.holdBegan(0, ARMED);
+    lost.stop(reason);
+    const VoiceGestureOut gone = lost.tick(T / 2, NO_PHONE);
+    expect(is(gone, VOICE_ACT_FAIL) && gone.cue == VOICE_CUE_NO_LINK && is(lost.holdEnded(T / 2 + 10, ARMED), VOICE_ACT_NONE),
+           "the link lost after the mic went off: «no link», no scan (as in the pre-roll)");
+  }
+
+  VoiceGesture talking = voiceGesture();
+  talking.holdBegan(0, ARMED);
+  talking.tick(T, ARMED);
+  const VoiceGestureOut low = talking.stop(VOICE_END_LOW_BATTERY);
+  expect(is(low, VOICE_ACT_MIC_OFF | VOICE_ACT_SEND_END | VOICE_ACT_FAIL) && low.endReason == VOICE_END_LOW_BATTERY &&
+             low.cue == VOICE_CUE_TALK_FAILED && talking.state == VOICE_GESTURE_SPENT,
+         "low battery while talking is unchanged: END 3 and the fail cue");
+
+  for (uint8_t why = 0; why < 6; why++) {
+    VoiceGesture phone = voiceGesture();
+    phone.holdBegan(0, ARMED);
+    const VoiceGestureOut stopped = phone.stop(VOICE_END_PHONE_STOP, why);
+    const bool spent = why == VOICE_STOP_MINUTES_SPENT;
+    expect(phone.state == VOICE_GESTURE_SPENT && stopped.cue == (spent ? VOICE_CUE_SEE_PHONE : VOICE_CUE_TALK_FAILED) &&
+               stopped.has(VOICE_ACT_FAIL) == !spent && is(phone.holdEnded(T / 2, ARMED), VOICE_ACT_NONE),
+           "a phone STOP in the pre-roll is unchanged: it ends the hold at once, no scan");
+  }
 }
 
 static void testLinkLoss() {
@@ -439,6 +516,89 @@ static void testProperty() {
          "property: the run reached every path (talks, ends, overflows, scans, errors)");
 }
 
+// The voice_control write: 2 bytes (an app before 0.4.5) or 3 (the phone
+// names the utterance), opcode 0x01 STOP, offset 0; anything else rejected.
+static void testStopWriteShape() {
+  const uint8_t two[] = {0x01, 2};
+  const uint8_t three[] = {0x01, 2, 41};
+  const uint8_t wrap[] = {0x01, 1, 255};
+  const uint8_t four[] = {0x01, 2, 9, 0};
+  const uint8_t forget[] = {0x02, 2, 9};
+  expect(voiceStopWrite(two, 2, 0, 9) == ((2u << 16) | 10u), "2-byte STOP: reason 2, stamped with the live utterance 9");
+  expect(voiceStopWrite(three, 3, 0, 9) == ((2u << 16) | 42u), "3-byte STOP: reason 2 for utterance 41, the live id unread");
+  expect(voiceStopWrite(wrap, 3, 0, 0) == ((1u << 16) | 256u), "3-byte STOP for utterance 255: stored as 256, never 0 (none)");
+  expect(voiceStopWrite(two, 0, 0, 9) == 0 && voiceStopWrite(two, 1, 0, 9) == 0 && voiceStopWrite(four, 4, 0, 9) == 0,
+         "a write of 0, 1 or 4 bytes: rejected");
+  expect(voiceStopWrite(forget, 2, 0, 9) == 0 && voiceStopWrite(forget, 3, 0, 9) == 0,
+         "any opcode but 0x01 STOP: rejected (there is no FORGET)");
+  expect(voiceStopWrite(two, 2, 1, 9) == 0 && voiceStopWrite(three, 3, 1, 9) == 0, "a write at an offset: rejected");
+  // The characteristic's max length (setMaxLen in setup()) must hold every
+  // write voiceStopWrite() accepts: 0.4.5 accepted 3 bytes behind a max of 2.
+  expect(VOICE_CONTROL_MAX_LEN == sizeof(three), "voice_control max length covers the 3-byte STOP");
+  const uint8_t longest[8] = {0x01, 2, 41, 0, 0, 0, 0, 0};
+  bool fits = true;
+  for (uint16_t len = 0; len <= sizeof(longest); len++) {
+    if (voiceStopWrite(longest, len, 0, 9) != 0 && len > VOICE_CONTROL_MAX_LEN) fits = false;
+  }
+  expect(fits && voiceStopWrite(longest, VOICE_CONTROL_MAX_LEN, 0, 9) != 0,
+         "every accepted voice_control write fits the max length, and the max itself is accepted");
+}
+
+// The bug of 0.4.4: the phone's STOP for one hold, arriving after the next
+// hold began, was stamped with the new id and ended it. A 3-byte STOP names
+// its hold, so the late one is dropped in the next pre-roll and talk; a
+// 2-byte one keeps the old stamping.
+static void testLateStopForThePreviousHold() {
+  static SmallUplink up;
+  VoiceGesture g = voiceGesture();
+  bool replying = false;
+  struct Run {
+    static void apply(const VoiceGestureOut& out, SmallUplink& u) {
+      if (out.has(VOICE_ACT_SEND_PRESS)) u.press();
+      if (out.has(VOICE_ACT_SEND_START)) u.start(40);
+      if (out.has(VOICE_ACT_DROP_AUDIO)) u.drop();
+      if (out.has(VOICE_ACT_SEND_END)) u.finish(out.endReason);
+    }
+  };
+  // What serviceVoice() would do with this write, as onVoiceControlAuthorize stores it.
+  #define ROUTE(bytes, n) \
+    voiceStopRoute((uint16_t)(voiceStopWrite(bytes, n, 0, up.utterance) & 0xFFFFu), up.utterance, g.micOn(), replying, false)
+
+  // Hold A: its own STOP ends it in the pre-roll and in the talk.
+  Run::apply(g.holdBegan(0, ARMED), up);
+  const uint8_t a = up.utterance;
+  const uint8_t stopA[] = {0x01, 2, a};
+  expect(g.state == VOICE_GESTURE_PREROLL && ROUTE(stopA, 3) == VOICE_STOP_LIVE,
+         "3-byte STOP for the live utterance, in its pre-roll: ends it");
+  Run::apply(g.tick(T, ARMED), up);
+  expect(g.state == VOICE_GESTURE_TALKING && ROUTE(stopA, 3) == VOICE_STOP_LIVE,
+         "3-byte STOP for the live utterance, in its talk: ends it");
+  Run::apply(g.holdEnded(T + 500, ARMED), up);
+  replying = true;
+  expect(ROUTE(stopA, 3) == VOICE_STOP_LATE, "3-byte STOP for the released hold, its reply awaited: the outcome");
+
+  // Hold B begins before the phone's STOP for A lands.
+  replying = false;
+  Run::apply(g.holdBegan(T + 1000, ARMED), up);
+  const uint8_t b = up.utterance;
+  const uint8_t stopB[] = {0x01, 2, b};
+  const uint8_t oldStop[] = {0x01, 2};
+  expect(b == (uint8_t)(a + 1) && g.state == VOICE_GESTURE_PREROLL && ROUTE(stopA, 3) == VOICE_STOP_DROP,
+         "3-byte STOP for the previous utterance, in the next hold's pre-roll: dropped");
+  expect(ROUTE(oldStop, 2) == VOICE_STOP_LIVE, "2-byte STOP in the next pre-roll: stamped live, ends it (as before)");
+  Run::apply(g.tick(T + 1000 + T, ARMED), up);
+  expect(g.state == VOICE_GESTURE_TALKING && ROUTE(stopA, 3) == VOICE_STOP_DROP,
+         "3-byte STOP for the previous utterance, in the next hold's talk: dropped");
+  expect(ROUTE(stopB, 3) == VOICE_STOP_LIVE, "3-byte STOP for the next hold itself: ends it");
+  expect(ROUTE(oldStop, 2) == VOICE_STOP_LIVE, "2-byte STOP in the next talk: stamped live, ends it (as before)");
+  Run::apply(g.holdEnded(T + 1000 + T + 500, ARMED), up);
+  replying = true;
+  expect(ROUTE(stopA, 3) == VOICE_STOP_DROP && ROUTE(stopB, 3) == VOICE_STOP_LATE,
+         "after the next release: the previous hold's STOP dropped, the next hold's gives its outcome");
+  expect(ROUTE(oldStop, 2) == VOICE_STOP_LATE, "2-byte STOP after the next release: the outcome (as before)");
+  #undef ROUTE
+}
+
 int main() {
   testConstants();
   testTap();
@@ -447,7 +607,10 @@ int main() {
   testCues();
   testUnowned();
   testStopRoute();
+  testStopWriteShape();
+  testLateStopForThePreviousHold();
   testCapAndStops();
+  testPinStopInPreroll();
   testLinkLoss();
   testWrapAndRepeats();
   testProperty();

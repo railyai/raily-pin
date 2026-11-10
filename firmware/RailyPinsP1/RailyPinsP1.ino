@@ -25,11 +25,16 @@
 #include "screen_bench.h"
 #include "bond_table.h"
 #include "bond_cccd_file.h"
+#include "record_store.h"
+#include "subscription_budget.h"
 #include "press_hold.h"
 #include "idle_sleep.h"
 #include "ship_mode.h"
 #include "device_name.h"
 #include "wire_pullups.h"
+#include "wire_guard.h"
+#include "soft_i2c.h"
+#include "watchdog.h"
 #include "battery_curve.h"
 #include "vdd_log.h"
 #include "voice_board.h"
@@ -41,7 +46,7 @@
 using namespace Adafruit_LittleFS_Namespace;
 
 static const char DEVICE_NAME[] = RAILY_DEVICE_NAME;  // the model: device_name.h
-static const char FW_VERSION[] = "0.4.4";
+static const char FW_VERSION[] = "0.4.5";
 
 BLEService railyService("7B1E0001-6F3A-4C2E-9A10-0D5C8F2A9E01");
 BLECharacteristic deviceInfoChr("7B1E0002-6F3A-4C2E-9A10-0D5C8F2A9E01");
@@ -74,6 +79,25 @@ BLECharacteristic linkSecurityChr("7B1E0010-6F3A-4C2E-9A10-0D5C8F2A9E01");
 // the counter, the secret and the bonds, so a release never carries it.
 #ifndef RAILY_VDD_BENCH
 #define RAILY_VDD_BENCH 0
+#endif
+// The watchdog bench (docs/pins/firmware.md, Watchdog): serial `H` hangs
+// loop() on purpose, so the bench sees the watchdog reset the pin. Only in
+// bench builds (build_firmware.sh --bench, or -DRAILY_WATCHDOG_BENCH=1),
+// never in a release.
+#ifndef RAILY_WATCHDOG_BENCH
+#define RAILY_WATCHDOG_BENCH (RAILY_VDD_BENCH && RAILY_WATCHDOG)
+#endif
+#if RAILY_WATCHDOG_BENCH && !RAILY_WATCHDOG
+#error "RAILY_WATCHDOG_BENCH needs RAILY_WATCHDOG"
+#endif
+// The bench's serial commands (docs/pins/firmware.md «Serial protocol»):
+// s (the sealed secret), w (the bind window), x (erase every bond) and the
+// o/c parser (screen demos, fake acks). Bench builds only
+// (build_firmware.sh --bench-serial, and every other bench option). A
+// release keeps i, p and r: provisioning sends i, p stands in for a button,
+// and the device boot smoke restarts the shipping image with r.
+#ifndef RAILY_BENCH_SERIAL
+#define RAILY_BENCH_SERIAL 0
 #endif
 BLECharacteristic powerStateChr("7B1E0007-6F3A-4C2E-9A10-0D5C8F2A9E01");
 // Voice from the pin (docs/pins/voice-from-pin.md, slice V2): hold the D1
@@ -124,7 +148,7 @@ uint32_t eventCounter = 0;
 // pre-slot firmware keeps a current counter instead of a stale floor.
 static const char COUNTER_PATH[] = "/counter.bin";
 // Record layout and restore selection live in counter_select.h (host-testable).
-static const char* COUNTER_PATHS[2] = {"/counter_a.bin", "/counter_b.bin"};
+static const char* const COUNTER_PATHS[2] = {"/counter_a.bin", "/counter_b.bin"};
 static uint32_t counterSeq = 0;
 static int8_t counterSlot = -1;  // slot holding the newest valid record this boot
 static std::atomic<bool> connected(false);
@@ -153,14 +177,24 @@ static std::atomic<uint8_t> pendingRhythmAck(0);
 // characteristics together: every sent notify adds one, the BLE task's
 // BLE_GATTS_EVT_HVN_TX_COMPLETE takes them back. Voice keeps one slot free
 // for a press and never calls notify() without room, so it never waits.
+// RAILY_NOTIFY(chr.notify(...)) counts the slot before the call: the BLE
+// task's TX_COMPLETE can run before notify() returns, and a count added
+// after it would be floored at 0 there and leak a slot until the link
+// ends. A notify() that fails gives the slot back.
 #if RAILY_VOICE
 static std::atomic<uint8_t> hvnInflight(0);
-static inline bool noteNotify(bool sent) {
-  if (sent) hvnInflight.fetch_add(1, std::memory_order_relaxed);
+static inline void hvnReserve() { hvnInflight.fetch_add(1, std::memory_order_relaxed); }
+static inline bool hvnSettle(bool sent) {
+  uint8_t inflight = hvnInflight.load(std::memory_order_relaxed);
+  // Floored at 0: a new link may have zeroed the count meanwhile.
+  while (!sent && inflight > 0 &&
+         !hvnInflight.compare_exchange_weak(inflight, (uint8_t)(inflight - 1), std::memory_order_relaxed)) {
+  }
   return sent;
 }
+#define RAILY_NOTIFY(call) (hvnReserve(), hvnSettle(call))
 #else
-static inline bool noteNotify(bool sent) { return sent; }
+#define RAILY_NOTIFY(call) (call)
 #endif
 
 // Keyring Air sleep (idle_sleep.h, docs/pins/air-power-risks.md): loop()
@@ -338,10 +372,30 @@ static BondTable bondTable = {};
 static bool bondTableDirty = false;
 static std::atomic<uint8_t> bondFileCount(0);  // loop() counts; link_security and serial i read
 // A pairing just completed: loop() enforces the bond cap a moment later,
-// after Bluefruit's own deferred save has written the new bond file.
+// after Bluefruit's own deferred save has written the new bond file. The
+// clock (BondCapClock, bond_table.h) is read and changed under passMutex;
+// the two atomics let idleSleepMs() and the power-off check read it without
+// the lock.
 static const uint32_t BOND_CAP_DELAY_MS = 2000;
 static std::atomic<bool> bondCapPending(false);
 static std::atomic<uint32_t> bondCapDueMs(0);
+static bool bondCapRerun = false;  // under passMutex
+
+// Called with passMutex held.
+static BondCapClock bondCapLocked() {
+  BondCapClock clock = {bondCapPending.load(std::memory_order_relaxed), bondCapDueMs.load(std::memory_order_relaxed),
+                        bondCapRerun};
+  return clock;
+}
+
+// Called with passMutex held. loop() acts on the new deadline (from loop()
+// itself the wake only costs one extra pass).
+static void bondCapPublishLocked(const BondCapClock& clock) {
+  bondCapDueMs.store(clock.dueMs, std::memory_order_relaxed);
+  bondCapPending.store(clock.pending, std::memory_order_relaxed);
+  bondCapRerun = clock.rerun;
+  RAILY_WAKE_LOOP();
+}
 static std::atomic<bool> serviceChangedCheckPending(false);
 // The first attribute handle the application owns, from the SoftDevice after
 // Bluefruit.begin(); 0 = unknown, and no Service Changed is sent. The range
@@ -377,6 +431,16 @@ static const size_t BOND_FILE_MAX = 256;  // a bond file is about 130 bytes: key
 // The phone wrote the Service Changed CCCD (its value): loop() logs it.
 static std::atomic<bool> serviceChangedCccdPending(false);
 static std::atomic<uint16_t> serviceChangedCccdValue(0);
+// The subscription budget (subscription_budget.h, ble-bonding.md D-5): each
+// subscription change of a phone that is not admitted makes Bluefruit
+// rewrite its bond file, so those changes are rationed. Only the BLE task
+// touches it, under passMutex with the admitted table it checks first.
+// The counters are serial `i`'s "sub"; loop() prints each closed link.
+static SubscriptionBudget subBudget = {};
+static std::atomic<uint32_t> subBudgetChanges(0);
+static std::atomic<uint32_t> subBudgetCuts(0);
+static std::atomic<bool> subBudgetCutPending(false);
+static std::atomic<uint8_t> subBudgetCutWhy(0);
 // The single peripheral link as the BLE task last saw it, for loop(): the
 // BLE task deletes a BLEConnection on disconnect, so loop() never touches
 // one and reads this copy instead (guarded by passMutex).
@@ -388,6 +452,9 @@ static uint16_t linkCacheHandle = BLE_CONN_HANDLE_INVALID;
 static volatile bool dropLinkArmed = false;
 static volatile uint32_t dropLinkAtMs = 0;
 static uint16_t dropLinkHandle = BLE_CONN_HANDLE_INVALID;  // loop task only
+// The link's epoch with its handle: a phone that connected in the 300 ms on
+// a reused handle is not that link and is never dropped.
+static uint32_t dropLinkEpoch = 0;  // loop task only
 // BLE bonding stage 2 (ble-bonding.md §9.1, press_hold.h): presses and acks
 // only on a trusted link. The last press (what a trusted button_event read
 // returns) and the one held press, both guarded by passMutex; never a flash
@@ -462,68 +529,49 @@ static int buildDeviceInfoJson(char* buf, size_t size, bool linkState) {
                           bootloaderKindName(bootloaderKind), RAILY_SHIP_MODE != 0);
 }
 
-/// Persists the current counter to the slot that does not hold the last valid record.
+// InternalFS for record_store.h, where the persistence steps live (the host
+// tests run the same steps on a RAM fake, tests/fake_fs.h). Every call goes
+// straight to Adafruit_LittleFS: no buffering, no extra flash operation.
+static_assert(RECORD_O_READ == FILE_O_READ && RECORD_O_WRITE == FILE_O_WRITE,
+              "record_store.h open modes are Adafruit_LittleFS's");
+struct InternalFsSeam {
+  bool exists(const char* path) { return InternalFS.exists(path); }
+  bool mkdir(const char* path) { return InternalFS.mkdir(path); }
+  bool remove(const char* path) { return InternalFS.remove(path); }
+  bool rename(const char* from, const char* to) { return InternalFS.rename(from, to); }
+  class File {
+   public:
+    explicit File(InternalFsSeam&) : file_(InternalFS) {}
+    bool open(const char* path, uint8_t mode) { return file_.open(path, mode); }
+    bool seek(uint32_t pos) { return file_.seek(pos); }
+    size_t write(const uint8_t* bytes, size_t length) { return file_.write(bytes, length); }
+    int read(void* buffer, uint16_t length) { return file_.read(buffer, length); }
+    bool truncate(uint32_t size) { return file_.truncate(size); }
+    void close() { file_.close(); }
+
+   private:
+    Adafruit_LittleFS_Namespace::File file_;
+  };
+};
+static InternalFsSeam internalFs;
+
+/// Persists the current counter to the slot that does not hold the last valid
+/// record (persistCounterRecord, record_store.h: ping-pong slot, seek(0),
+/// read back, then the legacy file best-effort).
 static bool persistCounter() {
-  // Ping-pong: overwrite the slot that is NOT the newest valid one, so a
-  // torn write can never destroy the last good record.
-  // Total for every counterSlot value, including -1 (no valid slot yet).
-  int slot = (counterSlot == 0) ? 1 : 0;
-  CounterRecord rec = {COUNTER_MAGIC, eventCounter, counterSeq + 1, 0};
-  rec.checksum = counterChecksum(rec);
-  File file(InternalFS);
-  if (!file.open(COUNTER_PATHS[slot], FILE_O_WRITE)) return false;
-  // FILE_O_WRITE is append mode in Adafruit_LittleFS — seek back to 0
-  // so the file stays a single record.
-  file.seek(0);
-  size_t written = file.write((const uint8_t*)&rec, sizeof(rec));
-  file.close();
-  if (written != sizeof(rec)) return false;
-  counterSeq = rec.seq;
-  counterSlot = slot;
-  // Best-effort dual-write of the legacy bare-u32 file AFTER the validated
-  // slot commit: keeps it current so a downgrade to pre-slot firmware does
-  // not resume from a stale floor, and gives restore a plausible bound for
-  // torn-slot salvage. Failure here must not fail the persist — the slot
-  // record is authoritative.
-  File legacy(InternalFS);
-  if (legacy.open(COUNTER_PATH, FILE_O_WRITE)) {
-    legacy.seek(0);
-    legacy.write((const uint8_t*)&eventCounter, sizeof(eventCounter));
-    legacy.close();
-  }
-  return true;
+  return persistCounterRecord(internalFs, COUNTER_PATHS, COUNTER_PATH, eventCounter, &counterSeq, &counterSlot);
 }
 
 /// Restores the newest valid counter record or salvages the safest fallback.
-/// Storage reads stay here; the decision itself is selectCounterRecord()
-/// (counter_select.h) so it can be unit-tested on the host.
+/// Storage reads are restoreCounterRecord() (record_store.h); the decision
+/// itself is selectCounterRecord() (counter_select.h), both host-tested.
 /// Called once from setup() before emitMutex exists — single-context by
 /// construction; all later persists run serialized under emitMutex.
 static void restoreCounter() {
   static bool counterRestored = false;
   if (counterRestored) return;
   counterRestored = true;
-  CounterSlotCandidate slots[2] = {};
-  for (int slot = 0; slot < 2; slot++) {
-    File file(InternalFS);
-    if (!file.open(COUNTER_PATHS[slot], FILE_O_READ)) continue;
-    CounterRecord rec = {};
-    if (file.read(&rec, sizeof(rec)) == sizeof(rec)) {
-      slots[slot].present = true;
-      slots[slot].rec = rec;
-    }
-    file.close();
-  }
-  // The legacy bare-u32 file can coexist with a torn slot after an interrupted
-  // upgrade. It has no integrity field, but remains a plausible lower bound.
-  bool hasLegacy = false;
-  uint32_t legacy = 0;
-  File legacyFile(InternalFS);
-  if (legacyFile.open(COUNTER_PATH, FILE_O_READ)) {
-    hasLegacy = legacyFile.read(&legacy, sizeof(legacy)) == sizeof(legacy);
-    legacyFile.close();
-  }
-  CounterDecision d = selectCounterRecord(slots[0], slots[1], hasLegacy, legacy);
+  CounterDecision d = restoreCounterRecord(internalFs, COUNTER_PATHS, COUNTER_PATH);
   if (d.counter > eventCounter) eventCounter = d.counter;
   // d.seq is the newest generation seen even on the salvage path, so
   // adopting it keeps persisted seqs monotone; d.slot is -1 there, which
@@ -579,11 +627,11 @@ static void emitButtonEvent(uint8_t pressType) {
   bool sent = false;
   if (earlierTick == HELD_EXPIRED) pendingScreenPressFailed.store(true, std::memory_order_relaxed);
   if (route == PRESS_NOTIFY) {
-    if (sendEarlier && !noteNotify(buttonEventChr.notify(handle, earlier, sizeof(earlier)))) {
+    if (sendEarlier && !RAILY_NOTIFY(buttonEventChr.notify(handle, earlier, sizeof(earlier)))) {
       pendingScreenPressFailed.store(true, std::memory_order_relaxed);
     }
     // A link that dropped since the check fails the notify: «didn't work».
-    sent = noteNotify(buttonEventChr.notify(handle, &evt, sizeof(evt)));
+    sent = RAILY_NOTIFY(buttonEventChr.notify(handle, &evt, sizeof(evt)));
   }
   if (sent) {
     pendingScreenPress.store(true, std::memory_order_relaxed);
@@ -618,7 +666,7 @@ static void serviceHeldPress() {
   const HeldPressTick tick = heldPress.poll(sameLink, ready, millis(), epoch);
   memcpy(payload, heldPress.payload, sizeof(payload));
   xSemaphoreGive(passMutex);
-  bool sent = tick == HELD_DELIVER && noteNotify(buttonEventChr.notify(handle, payload, sizeof(payload)));
+  bool sent = tick == HELD_DELIVER && RAILY_NOTIFY(buttonEventChr.notify(handle, payload, sizeof(payload)));
   bool retry = false;
   if (tick == HELD_DELIVER && !sent) {
     // A notify that failed (no buffer, a moment's race) is tried again on
@@ -1039,9 +1087,16 @@ static void onPassAuthorize(uint16_t connHdl, BLECharacteristic*, ble_gatts_evt_
     rejectWriteAuthorize(connHdl, BLE_GATT_STATUS_ATTERR_APP_BEGIN + (PASS_BUSY - 0x80));
     return;
   }
+  // A reset already armed (the 300 ms drain): every pass class is refused
+  // before it spends the nonce. One accepted now would be acknowledged and
+  // then lost to the reset; the app retries after the restart.
+  if (rebootArmed || enterDfuArmed) {
+    rejectWriteAuthorize(connHdl, BLE_GATT_STATUS_ATTERR_APP_BEGIN + (PASS_BUSY - 0x80));
+    return;
+  }
   // A control pass that could not be armed right now is refused before it
   // spends the nonce, so the app can retry the same pass: a restart in the
-  // first 60 s of uptime, or any reset already armed.
+  // first 60 s of uptime.
   if (request->len == PASS_LENGTH && request->data[1] == PASS_CLASS_CONTROL &&
       !controlArmable(request->data[2], now)) {
     rejectWriteAuthorize(connHdl, BLE_GATT_STATUS_ATTERR_APP_BEGIN + (PASS_BUSY - 0x80));
@@ -1062,11 +1117,15 @@ static void onPassAuthorize(uint16_t connHdl, BLECharacteristic*, ble_gatts_evt_
     bool evicted = false;
     if (bondTable.admit(link.addr, link.addrType, NULL, &evicted)) bondTableDirty = true;
     admitted = true;
+    // An admitted phone's subscriptions are never rationed. A change racing
+    // this pass in the BLE task is decided before or after it, never across.
+    subBudget.forget(link.addr);
     // A ninth phone pushed the oldest out of the table: its bond file goes
     // with the next cap pass (an unadmitted bond is evicted first).
     if (evicted) {
-      bondCapDueMs.store(now, std::memory_order_relaxed);
-      bondCapPending.store(true, std::memory_order_relaxed);
+      BondCapClock cap = bondCapLocked();
+      cap.evicted(now);
+      bondCapPublishLocked(cap);
     }
   }
   xSemaphoreGive(passMutex);
@@ -1225,6 +1284,22 @@ static void onPassChallengeAuthorize(uint16_t connHdl, BLECharacteristic*, ble_g
   replyRead(connHdl, request, value, sizeof(value));
 }
 
+// device_secret is checked at read time (BLE task, useAdaCallback = false):
+// the published seal goes out only while the pin serves it (unowned, in its
+// bind window: bindWindowServes, the rule resealSecret() uses), otherwise
+// an empty value, so a stale seal is never readable once the window closes
+// or the pin becomes owned. A long read asks again for each part at its
+// offset; replyRead serves the rest from there, and a part asked after the
+// value went empty gets INVALID_OFFSET, never bytes of another seal. The
+// reply is sent under passMutex, so the seal cannot change while the
+// SoftDevice copies it, and no blob is copied onto this task's stack.
+static void onDeviceSecretReadAuthorize(uint16_t connHdl, BLECharacteristic*, ble_gatts_evt_read_t* request) {
+  xSemaphoreTake(passMutex, portMAX_DELAY);
+  const bool serving = bindWindowServes(hasSecret, secretOwned, bindWindow.isOpen(millis()));
+  replyRead(connHdl, request, sealedSecret, serving ? (uint16_t)sealedSecretLength : 0);
+  xSemaphoreGive(passMutex);
+}
+
 // link_security (7B1E0010, ble-bonding.md D-3). The permission is an
 // encrypted read, so the SoftDevice refuses it on an open link before this
 // runs (that refusal is what makes iOS pair); the value is built now.
@@ -1338,6 +1413,66 @@ static void repairBondCccdFile(uint16_t connHdl) {
   RAILY_WAKE_LOOP();
 }
 
+// A link the subscription budget refuses (BLE task): one SoftDevice call,
+// no flash. A link already closing refuses the call and is not counted
+// twice. loop() prints why.
+static void closeForSubscriptionBudget(uint16_t connHdl, uint8_t why) {
+  if (sd_ble_gap_disconnect(connHdl, BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION) != NRF_SUCCESS) return;
+  subBudgetCuts.fetch_add(1, std::memory_order_relaxed);
+  subBudgetCutWhy.store(why, std::memory_order_relaxed);
+  subBudgetCutPending.store(true, std::memory_order_relaxed);
+  RAILY_WAKE_LOOP();
+}
+
+// BLE task, when a link turns encrypted (SEC_INFO_REQUEST of a bonded
+// phone, CONN_SEC_UPDATE, a pairing's AUTH_STATUS): a phone that is not
+// admitted, whose bucket or the shared one ran dry, is closed before it can
+// change a subscription, which Bluefruit would save. At SEC_INFO_REQUEST
+// the encryption is not up yet, so not even a write in flight is saved.
+// A pairing that has not named its phone yet meets only the shared bucket.
+// Returns true when the link is refused.
+static bool gateSubscriptionsAtEncryption(uint16_t connHdl) {
+  const LinkSecurity link = readLinkSecurity(connHdl);
+  xSemaphoreTake(passMutex, portMAX_DELAY);
+  const bool admitted = link.bonded && bondTable.contains(link.addr);
+  const uint8_t why = admitted ? 0 : subBudget.blockedAtEncryption(link.bonded ? link.addr : NULL, millis());
+  xSemaphoreGive(passMutex);
+  if (why != 0) closeForSubscriptionBudget(connHdl, why);
+  return why != 0;
+}
+
+// BLE task, on a CCCD write (BLE_GATTS_EVT_WRITE, after Bluefruit queued
+// its save). Bluefruit saves only on an encrypted link (BLEGatt.cpp), and
+// it saves the whole system-attributes blob, so the change is judged on
+// that blob as it is now: open-link writes and the Service Changed CCCD,
+// which ride along with the next save, are paid for too. Admitted phones
+// are never counted. Keyed by the bond's identity address, the name of the
+// file the save lands in; a link encrypted by a pairing that has not named
+// its phone yet shares one entry with every such link.
+static __attribute__((noinline)) void budgetSubscriptionWrite(uint16_t connHdl, const ble_gatts_evt_write_t& write) {
+  static uint8_t blob[64];  // BLE task only; this GATT table's blob is about 32 bytes
+  static const uint8_t noIdentity[SUB_ADDR_LENGTH] = {0};
+  if (write.uuid.type != BLE_UUID_TYPE_BLE || write.uuid.uuid != BLE_UUID_DESCRIPTOR_CLIENT_CHAR_CONFIG) return;
+  BLEConnection* conn = Bluefruit.Connection(connHdl);
+  if (conn == NULL || !conn->secured()) return;
+  const LinkSecurity link = readLinkSecurity(connHdl);
+  uint16_t length = sizeof(blob);
+  const uint32_t print = sd_ble_gatts_sys_attr_get(connHdl, blob, &length,
+                                                   BLE_GATTS_SYS_ATTR_FLAG_SYS_SRVCS | BLE_GATTS_SYS_ATTR_FLAG_USR_SRVCS) ==
+                                 NRF_SUCCESS
+                             ? subscriptionFingerprint(blob, length)
+                             : 0;  // unknown: always a change
+  uint8_t why = 0;
+  SubVerdict verdict = SUB_FREE;
+  xSemaphoreTake(passMutex, portMAX_DELAY);
+  if (!(link.bonded && bondTable.contains(link.addr))) {
+    verdict = subBudget.change(link.bonded ? link.addr : noIdentity, print, millis(), &why);
+  }
+  xSemaphoreGive(passMutex);
+  if (verdict != SUB_FREE) subBudgetChanges.fetch_add(1, std::memory_order_relaxed);
+  if (verdict == SUB_CLOSE) closeForSubscriptionBudget(connHdl, why);
+}
+
 static void onBleEvent(ble_evt_t* evt) {
   const uint16_t connHdl = evt->evt.common_evt.conn_handle;
   switch (evt->header.evt_id) {
@@ -1365,16 +1500,25 @@ static void onBleEvent(ble_evt_t* evt) {
       if (link.bonded && bondTable.revoke(link.addr)) bondTableDirty = true;
       linkCache = link;
       linkCacheHandle = connHdl;
+      // The cap pass a delay later; one already pending is not moved, so a
+      // peer pairing again and again cannot postpone it (bond_table.h).
+      BondCapClock cap = bondCapLocked();
+      cap.paired(millis(), BOND_CAP_DELAY_MS);
+      bondCapPublishLocked(cap);
       xSemaphoreGive(passMutex);
-      bondCapDueMs.store(millis() + BOND_CAP_DELAY_MS, std::memory_order_relaxed);
-      bondCapPending.store(true, std::memory_order_relaxed);
       RAILY_WAKE_LOOP();
+      // The pairing has named its phone now (just revoked, so not admitted).
+      gateSubscriptionsAtEncryption(connHdl);
       break;
     }
     case BLE_GAP_EVT_SEC_INFO_REQUEST:
+      // A phone the subscription budget shuts out goes before its link is
+      // encrypted; its bond file is left for a link that stays.
+      if (gateSubscriptionsAtEncryption(connHdl)) break;
       repairBondCccdFile(connHdl);  // before Bluefruit reads the CCCD field at CONN_SEC_UPDATE
       break;
     case BLE_GAP_EVT_CONN_SEC_UPDATE:
+      gateSubscriptionsAtEncryption(connHdl);
       cacheLink(connHdl, true);
       serviceChangedCheckPending.store(true, std::memory_order_relaxed);
       RAILY_WAKE_LOOP();
@@ -1390,6 +1534,7 @@ static void onBleEvent(ble_evt_t* evt) {
       // first try gets 0x8; iOS writes it again about 0.6 s later, on every
       // link, and the indication goes then.
       const ble_gatts_evt_write_t& write = evt->evt.gatts_evt.params.write;
+      budgetSubscriptionWrite(connHdl, write);  // any CCCD of a phone that is not admitted
       if (serviceChangedCccdHandle == 0 || write.handle != serviceChangedCccdHandle) break;
       const uint16_t cccd = write.len >= 2 ? (uint16_t)(write.data[0] | (write.data[1] << 8)) : 0;
       serviceChangedCccdValue.store(cccd, std::memory_order_relaxed);
@@ -1425,26 +1570,16 @@ static bool fillRandom(uint8_t* out, uint8_t length) {
 // Written to a temp file, then renamed over the record: LittleFS renames
 // atomically, so a power loss leaves either the old or the new record,
 // never a torn one (which would mint a new secret on the next boot).
-static bool writeSecretFile(const uint8_t secret[SECRET_LENGTH], bool owned) {
-  if (!InternalFS.exists(SECRET_DIR)) InternalFS.mkdir(SECRET_DIR);
-  SecretRecord rec = makeSecretRecord(secret, owned);
-  File file(InternalFS);
-  if (!file.open(SECRET_TEMP_PATH, FILE_O_WRITE)) return false;
-  // FILE_O_WRITE opens read-write + create and seeks to the end (not
-  // O_APPEND), so seek(0) rewrites the record in place, as the counter
-  // slots do.
-  file.seek(0);
-  size_t written = file.write((const uint8_t*)&rec, sizeof(rec));
-  // A longer foreign file must not survive past the record, or the next
-  // boot would reject it again and mint a new secret every time.
-  bool truncated = written == sizeof(rec) && file.truncate(sizeof(rec));
-  file.close();
-  memset(&rec, 0, sizeof(rec));
-  return truncated && InternalFS.rename(SECRET_TEMP_PATH, SECRET_PATH);
+// The steps, the truncate of a longer foreign temp file and the read-back
+// are storeSecretRecord() in record_store.h. noinline: its frame (the
+// record, the File object, the record's SHA-256) is budgeted under this name
+// (stack_budget.json), so it must not fold into replaceSecret's.
+static __attribute__((noinline)) bool writeSecretFile(const uint8_t secret[SECRET_LENGTH], bool owned) {
+  return storeSecretRecord(internalFs, SECRET_DIR, SECRET_TEMP_PATH, SECRET_PATH, secret, owned);
 }
 
 static bool eraseMascotFile() {
-  return !InternalFS.exists(MASCOT_PATH) || InternalFS.remove(MASCOT_PATH);
+  return eraseRecordFile(internalFs, MASCOT_PATH);
 }
 
 // The current link for loop() (see linkCache).
@@ -1461,6 +1596,7 @@ static LinkSecurity currentLink(uint16_t* handle) {
 static void armBondedLinkDropLocked() {
   if (linkCacheHandle != BLE_CONN_HANDLE_INVALID && linkCache.bonded) {
     dropLinkHandle = linkCacheHandle;
+    dropLinkEpoch = linkEpoch;
     dropLinkAtMs = millis() + DEVICE_CONTROL_DRAIN_MS;
     dropLinkArmed = true;
   }
@@ -1471,7 +1607,7 @@ static void armBondedLinkDropLocked() {
 static void clearBondsLocked() {
   bondTable.clear();
   bondTableDirty = false;
-  if (InternalFS.exists(BONDS_PATH) && !InternalFS.remove(BONDS_PATH)) Serial.println("bond table: erase failed");
+  if (!eraseRecordFile(internalFs, BONDS_PATH)) Serial.println("bond table: erase failed");
   bond_clear_prph();
   bondFileCount.store(0, std::memory_order_relaxed);
   armBondedLinkDropLocked();
@@ -1513,30 +1649,56 @@ static bool replaceSecret() {
   return true;
 }
 
-// Called once from setup() after Bluefruit.begin() (the RNG needs the
-// SoftDevice). A missing, torn or foreign record means a fresh pin.
-static void restoreSecret() {
-  File file(InternalFS);
-  if (file.open(SECRET_PATH, FILE_O_READ)) {
-    uint8_t buffer[sizeof(SecretRecord) + 1];
-    size_t length = file.read(buffer, sizeof(buffer));
-    file.close();
-    SecretRecord rec;
-    if (readSecretRecord(buffer, length, rec)) {
-      memcpy(deviceSecret, rec.secret, SECRET_LENGTH);
-      hasSecret = true;
-      secretOwned = (rec.flags & SECRET_FLAG_OWNED) != 0;
-      memset(&rec, 0, sizeof(rec));
-      return;
-    }
+// The record exists but could not be opened or read: loop() reads it again
+// (restoreSecret) instead of minting. Loop task only.
+static bool secretUnreadable = false;
+// Unreadable reads in a row this boot (secretUnreadableTriesAfter,
+// record_store.h); at SECRET_UNREADABLE_MAX_TRIES the record counts as
+// invalid. Loop task only.
+static uint16_t secretUnreadableTries = 0;
+
+// From setup() after Bluefruit.begin() (the RNG needs the SoftDevice), and
+// from loop() while the record stays unreadable. A missing, torn or foreign
+// record means a fresh pin; one that cannot be read leaves the pin without
+// a secret (every pass refused) and writes nothing, so a good record and
+// its owner survive a passing flash error (since 0.4.5). After about 2
+// minutes of reads that fail, the record counts as invalid and a new secret
+// is made, so damaged flash cannot strand the pin. The read is
+// loadSecretRecord() (record_store.h).
+static SecretLoad restoreSecret() {
+  SecretRecord rec;
+  const SecretLoad load = loadSecretRecord(internalFs, SECRET_PATH, rec);
+  secretUnreadable = load == SECRET_UNREADABLE;
+  secretUnreadableTries = secretUnreadableTriesAfter(load, secretUnreadableTries);
+  if (load == SECRET_LOADED) {
+    // Under passMutex: on a retry from loop() the BLE task reads these.
+    xSemaphoreTake(passMutex, portMAX_DELAY);
+    memcpy(deviceSecret, rec.secret, SECRET_LENGTH);
+    secretOwned = (rec.flags & SECRET_FLAG_OWNED) != 0;
+    hasSecret = true;
+    xSemaphoreGive(passMutex);
+    memset(&rec, 0, sizeof(rec));
+    return load;
   }
-  // A new secret means someone just flashed or erased this pin: it opens
-  // the bind window (bind_window.h).
+  memset(&rec, 0, sizeof(rec));
+  if (!secretLoadMints(load, secretUnreadableTries)) {
+    // One line per try: loop() tries every 5 s.
+    Serial.println("device secret: record unreadable - passes disabled, read again in 5 s");
+    return load;
+  }
+  // A new secret means someone just flashed or erased this pin (or its
+  // record stayed unreadable): it opens the bind window (bind_window.h).
   if (replaceSecret()) {
     freshSecretThisBoot = true;
+    if (load == SECRET_UNREADABLE) {
+      Serial.print("device secret: record stayed unreadable for ");
+      Serial.print((unsigned)secretUnreadableTries);
+      Serial.println(" tries - new secret made");
+    }
   } else {
     Serial.println("device secret: RNG or flash failed - passes disabled");
   }
+  return load;
 }
 
 // The head of one phone's Bluefruit bond file (its key field) into `head`;
@@ -1568,14 +1730,11 @@ static uint32_t readBondKeyPrint(const uint8_t addr[BOND_ADDR_LENGTH]) {
 // it; an unowned one keeps no admission. An entry stays only while its bond
 // file holds the keys it was admitted with (ble-bonding.md D-2).
 static __attribute__((noinline)) void restoreBondTable() {
-  File file(InternalFS);
-  static BondTable loaded;  // setup() only; static keeps it off the loop task's stack
+  static BondTable loaded;  // loop task only (setup(), or loop()'s secret retry); static keeps it off its stack
   bool ok = false;
-  if (secretOwned && file.open(BONDS_PATH, FILE_O_READ)) {
+  if (secretOwned) {
     static uint8_t buffer[BOND_RECORD_LENGTH + 1];
-    size_t length = file.read(buffer, sizeof(buffer));
-    file.close();
-    ok = decodeBondTable(buffer, length, loaded);
+    ok = loadBondTableRecord(internalFs, BONDS_PATH, buffer, sizeof(buffer), loaded);  // record_store.h
   }
   if (ok) {
     static uint8_t addrs[BOND_TABLE_MAX][BOND_ADDR_LENGTH];
@@ -1602,44 +1761,28 @@ static __attribute__((noinline)) void restoreBondTable() {
 }
 
 // Temp file + rename, as the secret record: a power loss keeps the old
-// table or the new one, never a torn one.
+// table or the new one, never a torn one (storeRecordAtomically,
+// record_store.h: renamed only once the temp file reads back as the record).
 static __attribute__((noinline)) bool writeBondTableFile(const uint8_t* rec, size_t length) {
-  if (!InternalFS.exists(SECRET_DIR)) InternalFS.mkdir(SECRET_DIR);
-  File file(InternalFS);
-  if (!file.open(BONDS_TEMP_PATH, FILE_O_WRITE)) return false;
-  file.seek(0);  // FILE_O_WRITE seeks to the end
-  bool ok = file.write(rec, length) == length && file.truncate(length);
-  file.close();
-  return ok && InternalFS.rename(BONDS_TEMP_PATH, BONDS_PATH);
+  return storeRecordAtomically(internalFs, SECRET_DIR, BONDS_TEMP_PATH, BONDS_PATH, rec, length);
 }
 
-// The mascot byte's flash record (mascot_record.h): loop task only.
+// The mascot byte's flash record (mascot_record.h): loop task only. Written
+// in place and read back (storeMascotRecord, record_store.h).
 static bool writeMascotFile(uint8_t value) {
-  if (!InternalFS.exists(SECRET_DIR)) InternalFS.mkdir(SECRET_DIR);
-  uint8_t rec[MASCOT_RECORD_LENGTH];
-  mascotRecordEncode(value, rec);
-  File file(InternalFS);
-  if (!file.open(MASCOT_PATH, FILE_O_WRITE)) return false;
-  file.seek(0);  // FILE_O_WRITE seeks to the end
-  bool ok = file.write(rec, sizeof(rec)) == sizeof(rec) && file.truncate(sizeof(rec));
-  file.close();
-  return ok;
+  return storeMascotRecord(internalFs, SECRET_DIR, MASCOT_PATH, value);
 }
 
-// Called once from setup() after restoreSecret(): an owned pin shows its
-// mascot from the first wake; an unowned one must not keep a record.
+// From setup() after restoreSecret(), or from loop() once an unreadable
+// record reads: an owned pin shows its mascot from the first wake; an
+// unowned one must not keep a record.
 static void restoreMascot() {
   if (!secretOwned) {
     eraseMascotFile();
     return;
   }
-  File file(InternalFS);
-  if (!file.open(MASCOT_PATH, FILE_O_READ)) return;
-  uint8_t buffer[MASCOT_RECORD_LENGTH + 1];
-  size_t length = file.read(buffer, sizeof(buffer));
-  file.close();
   uint8_t value = MASCOT_DEFAULT;
-  if (mascotRecordDecode(buffer, length, &value)) {
+  if (loadMascotRecord(internalFs, MASCOT_PATH, &value)) {  // record_store.h
     screen.restoreMascot(value);
     mascotStore.loaded(value);
   }
@@ -1669,16 +1812,43 @@ static void sealWorker(void*) {
   }
 }
 
-// Seals on the worker task and waits for it. Only the loop task calls it
-// (setup() and loop() share that task), so one job slot is enough.
+// A seal the loop task stopped waiting for (SEAL_WAIT_MS): the worker still
+// owns sealJob until it gives sealDone, so no new job may touch the slot
+// before that. Loop task only.
+static bool sealAbandoned = false;
+
+// Seals on the worker task and waits for it, at most SEAL_WAIT_MS (the seal
+// hung once on hardware, 0.2.4-qa; a wait without end took presses, the
+// screen and every pass action with it). Only the loop task calls it
+// (setup() and loop() share that task), so one job slot is enough. 0 on any
+// failure, a timeout included; the caller then publishes an empty seal.
 static size_t sealOnWorker(const uint8_t secret[SECRET_LENGTH], uint8_t* blob) {
   if (sealTask == NULL || sealDone == NULL) return 0;
+  if (sealAbandoned) {
+    // The late seal handed the slot back: its result belongs to a request
+    // nobody waits for any more, so it is wiped, never published.
+    if (xSemaphoreTake(sealDone, 0) != pdTRUE) {
+      Serial.println("device secret: an earlier seal still runs - not sealing");
+      return 0;
+    }
+    memset(sealJob.blob, 0, sizeof(sealJob.blob));
+    sealJob.length = 0;
+    sealAbandoned = false;
+    Serial.println("device secret: the late seal finished, discarded");
+  }
   memcpy(sealJob.secret, secret, SECRET_LENGTH);
+  const uint32_t startMs = millis();
   xTaskNotifyGive(sealTask);
-  xSemaphoreTake(sealDone, portMAX_DELAY);
+  if (xSemaphoreTake(sealDone, ms2tick(SEAL_WAIT_MS)) != pdTRUE) {
+    sealAbandoned = true;
+    Serial.printf("device secret: seal took over %lu ms - abandoned\n", (unsigned long)SEAL_WAIT_MS);
+    return 0;
+  }
   size_t length = sealJob.length;
+  if (length > sizeof(sealJob.blob)) length = 0;
   memcpy(blob, sealJob.blob, length);
   memset(sealJob.blob, 0, sizeof(sealJob.blob));
+  Serial.printf("seal: %lu ms\n", (unsigned long)(millis() - startMs));
   return length;
 }
 
@@ -1697,6 +1867,10 @@ static void resealSecret() {
   if (ready && length == 0) Serial.println("device secret: sealing failed");
   if (!ready) memset(blob, 0, sizeof(blob));
   xSemaphoreTake(passMutex, portMAX_DELAY);
+  // The window may have closed, or the pin become owned, while it sealed:
+  // then the finished seal is never published (the next pass sees the
+  // change and reseals to empty anyway).
+  if (!bindWindowServes(hasSecret, secretOwned, bindWindow.isOpen(millis()))) length = 0;
   if (generation == linkGeneration) {  // no disconnect while sealing
     memcpy(sealedSecret, blob, length);
     sealedSecretLength = length;
@@ -1796,6 +1970,67 @@ static void startAdv() {
   Bluefruit.Advertising.start(0);
 }
 
+// The hardware Wire bus at runtime (wire_guard.h): the OLED's frames and the
+// Air's DA7280 registers ask wireBusReady() before each batch of transfers.
+// Both users run the bus at 400 kHz; a recovery restores that rate.
+static const uint32_t WIRE_BUS_HZ = 400000;
+static WireGuard wireGuard = {};
+
+// D4/D5 as open-drain lines for soft_i2c.h while the TWIM is off (the same
+// S0D1 set-up as HapticPins); Wire.begin() takes them back afterwards.
+struct WireRecoveryPins {
+  uint32_t sdaPin = g_ADigitalPinMap[PIN_WIRE_SDA];
+  uint32_t sclPin = g_ADigitalPinMap[PIN_WIRE_SCL];
+  static void openDrain(uint32_t pin) {
+    nrf_gpio_pin_set(pin);
+    nrf_gpio_cfg(pin, NRF_GPIO_PIN_DIR_OUTPUT, NRF_GPIO_PIN_INPUT_CONNECT, NRF_GPIO_PIN_NOPULL,
+                 NRF_GPIO_PIN_S0D1, NRF_GPIO_PIN_NOSENSE);
+  }
+  void begin() {
+    openDrain(sdaPin);
+    openDrain(sclPin);
+  }
+  void sda(bool release) { nrf_gpio_pin_write(sdaPin, release ? 1 : 0); }
+  void scl(bool release) { nrf_gpio_pin_write(sclPin, release ? 1 : 0); }
+  bool readSda() { return nrf_gpio_pin_read(sdaPin) != 0; }
+  bool readScl() { return nrf_gpio_pin_read(sclPin) != 0; }
+  __attribute__((noinline)) void halfPeriod() { delayMicroseconds(5); }  // ~100 kHz
+};
+
+// Wire's pins keep their input buffers connected while the TWIM runs
+// (Wire.begin()), so the GPIO reads the wires without touching the TWIM.
+static bool wireLinesHigh() {
+  return nrf_gpio_pin_read(g_ADigitalPinMap[PIN_WIRE_SDA]) != 0 &&
+         nrf_gpio_pin_read(g_ADigitalPinMap[PIN_WIRE_SCL]) != 0;
+}
+
+// True: Wire may run its next batch of transfers. Called only on a started
+// bus, from the loop task (the panel and the motor never meet on it).
+__attribute__((noinline)) bool wireBusReady() {
+  const bool sdaHigh = nrf_gpio_pin_read(g_ADigitalPinMap[PIN_WIRE_SDA]) != 0;
+  const bool sclHigh = nrf_gpio_pin_read(g_ADigitalPinMap[PIN_WIRE_SCL]) != 0;
+  const WireStep step = wireGuard.before(sdaHigh && sclHigh, millis());
+  if (wireGuard.freedNow) {
+    Serial.printf("wire: bus free again (%lu transfers skipped since boot)\n", (unsigned long)wireGuard.skipped);
+  }
+  if (step == WIRE_GO) return true;
+  if (step == WIRE_SKIP) return false;
+  Wire.end();
+  WireRecoveryPins pins;
+  pins.begin();
+  SoftI2c<WireRecoveryPins> bus(pins);
+  const bool clockedFree = bus.idle();
+  Wire.begin();
+  Wire.setClock(WIRE_BUS_HZ);
+  const bool firstTry = wireGuard.episodeTries == 1;
+  const bool ready = wireGuard.afterRecovery(clockedFree && wireLinesHigh());
+  if (ready || firstTry) {
+    Serial.printf("wire: bus held low (sda %u, scl %u): %s\n", sdaHigh ? 1u : 0u, sclHigh ? 1u : 0u,
+                  ready ? "clocked free" : "still held, transfers skipped, retried each second");
+  }
+  return ready;
+}
+
 #if RAILY_MOTOR
 static RhythmPlayer rhythm = {};
 static bool motorReady = false;
@@ -1858,13 +2093,14 @@ struct GroveMotorPin {
 // OLED shares (0x3C; on the Expansion Board also the RTC 0x51). begin()
 // checks the pull-ups first (the core's Wire busy-waits); end() hands the
 // bus back to the OLED probe as if nothing had run. Loop task only, like
-// the panel, so the two never meet on the bus.
-static const uint32_t HAPTIC_WIRE_HZ = 400000;  // the panel's rate (oled_render.cpp)
+// the panel, so the two never meet on the bus. Every register first asks
+// wireBusReady(): a bus held low fails the access (the motor's retry takes
+// it from there) instead of hanging inside the core's Wire.
 struct HapticWire {
   bool begin() {
     if (!wireBusPulledUp()) return false;
     Wire.begin();
-    Wire.setClock(HAPTIC_WIRE_HZ);
+    Wire.setClock(WIRE_BUS_HZ);  // the panel's rate (oled_render.cpp)
     return true;
   }
   void end() {
@@ -1872,12 +2108,14 @@ struct HapticWire {
     releaseWirePins();
   }
   bool writeRegister(uint8_t address, uint8_t reg, uint8_t value) {
+    if (!wireBusReady()) return false;
     Wire.beginTransmission(address);
     Wire.write(reg);
     Wire.write(value);
     return Wire.endTransmission() == 0;
   }
   bool readRegister(uint8_t address, uint8_t reg, uint8_t* value) {
+    if (!wireBusReady()) return false;
     Wire.beginTransmission(address);
     Wire.write(reg);
     if (Wire.endTransmission(false) != 0) return false;
@@ -2043,7 +2281,7 @@ static volatile uint8_t voiceDmaNext = 0;        // the buffer SAMPLE.PTR names 
 static VoicePcmFifo<VOICE_PCM_FIFO_FRAMES> voicePcm;
 static VoiceHighPass voiceHpf;
 static bool voiceMicRunning = false;
-static uint8_t voiceGain = VOICE_PDM_XIAO_SENSE.gainRegister;  // GAINL/GAINR, the bench may change it (G)
+static uint8_t voiceGain = VOICE_PDM_BOARD.gainRegister;  // GAINL/GAINR of this board, the bench may change it (G)
 static bool voiceMicHighDrive = true;  // the mic power pin at H0H1 (the bench may change it: d)
 static uint32_t voiceMicStartMs = 0;
 static uint32_t voiceOverrunsSeen = 0;  // PCM FIFO overruns already acted on in this capture
@@ -2166,7 +2404,8 @@ static std::atomic<uint16_t> voiceLinkDataLength(27);
 static const uint8_t VOICE_HVN_QUEUE = 8;
 static const uint8_t VOICE_INFLIGHT_MAX = VOICE_HVN_QUEUE - 1;
 // voice_control STOP from the phone (BLE task), taken by loop(): the STOP
-// reason byte << 16 | the utterance it was written for, +1 (0 = none). One
+// reason byte << 16 | the utterance it was written for, +1 (0 = none; the
+// phone's own id in a 3-byte STOP, the live one in a 2-byte STOP). One
 // atomic, because the reason picks what the person sees: a second STOP can
 // never pair its reason with the first one's utterance. voiceStopRoute()
 // decides: it ends a live talk, gives its outcome while the reply is awaited,
@@ -2419,7 +2658,7 @@ static __attribute__((noinline)) void voiceSend(uint16_t handle, bool armed) {
     }
 #endif
     if (!armed || hvnInflight.load(std::memory_order_relaxed) >= VOICE_INFLIGHT_MAX) return;
-    if (!noteNotify(voiceStreamChr.notify(handle, frame, n))) return;  // no buffer now: the next pass
+    if (!RAILY_NOTIFY(voiceStreamChr.notify(handle, frame, n))) return;  // no buffer now: the next pass
 #if RAILY_VOICE_BENCH
     if (voiceMirrorSerial) Serial.write(line, voiceHexLine(line, "VF", frame, n));
 #endif
@@ -2454,6 +2693,7 @@ static __attribute__((noinline)) void serviceVoice() {
       break;
   }
   // 3. A critical battery (battery_curve.h, from VDD) ends a talk: END 3.
+  // In the pre-roll it only stops the mic, so a tap still scans (MUTED).
   if (voiceHold.micOn() && batteryCriticalNow()) {
     voiceApply(voiceHold.stop(VOICE_END_LOW_BATTERY), now, handle);
   }
@@ -2547,24 +2787,26 @@ static void onVoiceBleEvent(ble_evt_t* evt) {
   }
 }
 
-// voice_control (7B1E000B): exactly one opcode, 0x01 STOP + a reason byte,
-// from a trusted link only (the ATT layer already needs encryption). No
-// opcode can start the mic. The reason is the phone's (voice-from-pin.md
-// §4): every STOP ends the utterance with END 4; reason 1 (the minutes are
-// spent) shows «see the phone» with ▬, any other one «didn't work» (0.4.4).
+// voice_control (7B1E000B): exactly one opcode, 0x01 STOP + a reason byte
+// (+ the utterance byte from 0.4.5), from a trusted link only (the ATT layer
+// already needs encryption). No opcode can start the mic. The reason is the
+// phone's (voice-from-pin.md §4): every STOP ends the utterance with END 4;
+// reason 1 (the minutes are spent) shows «see the phone» with ▬, any other
+// one «didn't work» (0.4.4).
 static void onVoiceControlAuthorize(uint16_t connHdl, BLECharacteristic*, ble_gatts_evt_write_t* request) {
   if (!linkTrustedNow(connHdl)) {
     rejectWriteAuthorize(connHdl, BLE_GATT_STATUS_ATTERR_INSUF_AUTHORIZATION);
     return;
   }
-  if (request->offset != 0 || request->len != 2 || request->data[0] != 0x01) {
+  // A 2-byte STOP takes the live utterance id, read across tasks (a stale
+  // id only drops it); a 3-byte one carries the phone's own id.
+  const uint32_t stop = voiceStopWrite(request->data, request->len, request->offset, voiceUplink.utterance);
+  if (stop == 0) {
     rejectWriteAuthorize(connHdl, BLE_GATT_STATUS_ATTERR_WRITE_NOT_PERMITTED);
     return;
   }
   acceptWriteAuthorize(connHdl, request);
-  // The live utterance id, read across tasks: a stale id only drops the STOP.
-  pendingVoiceStop.store(((uint32_t)request->data[1] << 16) | (uint32_t)(voiceUplink.utterance + 1u),
-                         std::memory_order_relaxed);
+  pendingVoiceStop.store(stop, std::memory_order_relaxed);
   RAILY_WAKE_LOOP();
 }
 
@@ -2779,9 +3021,9 @@ static __attribute__((noinline)) void sampleBattery(uint32_t now, uint8_t power)
   // so the value goes out on the next reading.
 #if RAILY_BAT_ON_XIAO
   blebas.write(batteryPct);
-  if (batteryMark.percentDue(batteryPct) && noteNotify(blebas.notify(batteryPct))) batteryMark.percentNotified(batteryPct);
+  if (batteryMark.percentDue(batteryPct) && RAILY_NOTIFY(blebas.notify(batteryPct))) batteryMark.percentNotified(batteryPct);
 #endif
-  if (batteryMark.powerDue(batteryPower) && noteNotify(powerStateChr.notify8(batteryPower))) {
+  if (batteryMark.powerDue(batteryPower) && RAILY_NOTIFY(powerStateChr.notify8(batteryPower))) {
     batteryMark.powerNotified(batteryPower);
   }
 }
@@ -3057,6 +3299,69 @@ static __attribute__((noinline)) BootloaderKind detectBootloader() {
   return classifyBootloader((const uint8_t*)start, BOOTLOADER_FLASH_END - start);
 }
 
+// ---- Watchdog (watchdog.h, docs/pins/firmware.md «Watchdog») ----
+// A stuck loop task (a library or I2C busy-wait, a seal or flash wait that
+// never ends) used to leave a pin whose radio still answered while presses,
+// the screen, the passes and the battery logic were dead until the cell ran
+// out. The WDT resets it instead. Fed only by the loop task: setup() between
+// its long steps, loop() once per pass; never a timer or the BLE task, which
+// keep running while loop() is stuck.
+enum WatchdogBoot : uint8_t {
+  WATCHDOG_OFF = 0,      // not running: a RAILY_WATCHDOG=0 build
+  WATCHDOG_STARTED = 1,  // started by this boot with this build's settings
+  WATCHDOG_KEPT = 2,     // running from the last boot: its settings are locked
+};
+static WatchdogBoot watchdogBoot = WATCHDOG_OFF;
+
+// Reloads every enabled RR register of a running WDT (one write each; the
+// OTAFIX bootloader feeds all eight the same way). An earlier image may have
+// enabled others than RR[0]; with the WDT stopped it does nothing. Every
+// build feeds, RAILY_WATCHDOG=0 too: a soft reset never stops the WDT.
+static inline void watchdogFeed() {
+  if ((NRF_WDT->RUNSTATUS & WDT_RUNSTATUS_RUNSTATUS_Msk) == 0) return;
+  const uint32_t enabled = NRF_WDT->RREN;
+  for (uint32_t i = 0; i < 8; i++) {
+    if ((enabled & (1u << i)) != 0) NRF_WDT->RR[i] = WATCHDOG_RELOAD_VALUE;
+  }
+}
+
+// Once per boot, at the top of setup(), after the Air's System OFF wake
+// check (a wake from System OFF resets the WDT, and a short press goes
+// straight back to System OFF without starting it). A WDT left running by the last
+// boot (a restart pass, the end of a BLE update: soft resets) keeps the
+// CRV, RREN and CONFIG it was started with until a reset that stops it
+// (power-on, the RESET pin, a watchdog reset, a wake from System OFF), so
+// it is only fed here and reported as kept, never assumed to run this
+// build's settings. Pause while a debugger halts the CPU; run while it
+// sleeps: the idle sleep wakes loop() at least every IDLE_BACKSTOP_MS.
+static void watchdogStart() {
+  if ((NRF_WDT->RUNSTATUS & WDT_RUNSTATUS_RUNSTATUS_Msk) != 0) {
+    watchdogBoot = WATCHDOG_KEPT;
+    watchdogFeed();
+    return;
+  }
+#if RAILY_WATCHDOG
+  NRF_WDT->CONFIG = (WDT_CONFIG_SLEEP_Run << WDT_CONFIG_SLEEP_Pos) | (WDT_CONFIG_HALT_Pause << WDT_CONFIG_HALT_Pos);
+  NRF_WDT->CRV = watchdogCrv(WATCHDOG_TIMEOUT_MS);
+  NRF_WDT->RREN = WDT_RREN_RR0_Msk;
+  NRF_WDT->TASKS_START = 1;
+  watchdogBoot = WATCHDOG_STARTED;
+#endif
+}
+
+// The boot line, from the registers themselves (CRV, RREN, CONFIG read back).
+static __attribute__((noinline)) void printWatchdogBoot() {
+  if (watchdogBoot == WATCHDOG_OFF) {
+    Serial.println("watchdog: off (RAILY_WATCHDOG=0 build)");
+    return;
+  }
+  Serial.printf("watchdog: on, %lu ms, %s (crv 0x%08lx, rren 0x%02lx, config 0x%lx)%s\n",
+                (unsigned long)watchdogCrvMs(NRF_WDT->CRV),
+                watchdogBoot == WATCHDOG_STARTED ? "started this boot" : "kept from the last boot",
+                (unsigned long)NRF_WDT->CRV, (unsigned long)NRF_WDT->RREN, (unsigned long)NRF_WDT->CONFIG,
+                RAILY_WATCHDOG ? "" : " - fed, this build would not start it");
+}
+
 void setup() {
 #if RAILY_IDLE_SLEEP
   loopTask = xTaskGetCurrentTaskHandle();  // before any BLE callback can wake it
@@ -3078,6 +3383,8 @@ void setup() {
 #if RAILY_SHIP_MODE
   shipCheckWakeAtBoot();  // a short press from System OFF ends here, back off
 #endif
+  // From here on every long step is fed (watchdog.h WATCHDOG_TIMEOUT_MS).
+  watchdogStart();
   Serial.begin(115200);
   uint32_t serialWait = millis();
 #if RAILY_SHIP_MODE
@@ -3088,6 +3395,7 @@ void setup() {
 #endif
   while (waitForSerial && !Serial && millis() - serialWait < 4000) {
     delay(10);
+    watchdogFeed();
   }
 
   snprintf(
@@ -3099,8 +3407,11 @@ void setup() {
   bootloaderKind = detectBootloader();
   buildDeviceInfoJson(deviceInfoJson, sizeof(deviceInfoJson), false);
 
-  InternalFS.begin();
+  // Only reported: a failed mount still boots as before (Serial is up).
+  if (!InternalFS.begin()) Serial.println("fs: mount failed");
+  watchdogFeed();  // a failed mount formats the volume
   restoreCounter();
+  watchdogFeed();
   emitMutex = xSemaphoreCreateMutex();
   passMutex = xSemaphoreCreateMutex();
   sealDone = xSemaphoreCreateBinary();
@@ -3119,6 +3430,7 @@ void setup() {
   Bluefruit.configPrphConn(247, 100, VOICE_HVN_QUEUE, BLE_GATTC_WRITE_CMD_TX_QUEUE_SIZE_DEFAULT);
 #endif
   if (!Bluefruit.begin()) Serial.println("ble: Bluefruit.begin() FAILED (SoftDevice RAM?)");
+  watchdogFeed();
   // The core's init() (wiring.c) already read POWER->RESETREAS for this
   // boot and cleared it, before setup() and before the SoftDevice: the
   // register itself reads 0 by now, so only readResetReason() is valid.
@@ -3148,15 +3460,26 @@ void setup() {
   bledis.begin();
 
   // After Bluefruit.begin(): the secret needs the SoftDevice RNG.
-  restoreSecret();
-  restoreMascot();
-  restoreBondTable();
+  // Each may write or erase flash: fed between them. An unreadable secret
+  // record skips the mascot and the bond table: unowned, they would erase
+  // the owner's records. loop() runs both once the record reads.
+  if (restoreSecret() != SECRET_UNREADABLE) {
+    watchdogFeed();
+    restoreMascot();
+    watchdogFeed();
+    restoreBondTable();
+  }
+  watchdogFeed();
   enforceBondCap();  // counts the bond files for link_security and serial i
+  watchdogFeed();
   Serial.printf("reset reason 0x%08lx\n", (unsigned long)bootResetReason);
+  printWatchdogBoot();
   if (bindWindowOpensAtBoot(bootResetReason, freshSecretThisBoot)) {
     openBindWindow(freshSecretThisBoot ? "new secret" : "power-on or RESET");
   } else {
-    Serial.println("bind window: closed (software reset)");
+    // A watchdog reset (0x2) keeps the window closed like a software reset.
+    Serial.println((bootResetReason & RESETREAS_DOG) != 0 ? "bind window: closed (watchdog reset)"
+                                                           : "bind window: closed (software reset)");
   }
 #if RAILY_SHIP_MODE
   if (shipWokeByHold) {
@@ -3182,6 +3505,7 @@ void setup() {
   // board (voice-from-pin.md §9).
   voiceCapable = probeSenseBoard();
   printVoiceBoot();
+  watchdogFeed();
 #endif
 
   railyService.begin();
@@ -3242,8 +3566,11 @@ void setup() {
   deviceSecretChr.setProperties(CHR_PROPS_READ);
   deviceSecretChr.setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS);
   deviceSecretChr.setMaxLen(SEAL_MAX_BLOB);
+  // Before begin(): Bluefruit hands rd_auth to the SoftDevice only there.
+  deviceSecretChr.setReadAuthorizeCallback(onDeviceSecretReadAuthorize, false);
   deviceSecretChr.begin();
-  resealSecret();
+  resealSecret();  // the first seal: at most SEAL_WAIT_MS
+  watchdogFeed();
 
   // screen_state: write with response, 9 bytes, open before bonding (the
   // pin strips plaintext writes itself). The verdict is the ATT answer.
@@ -3284,7 +3611,9 @@ void setup() {
     // like every authorize callback (check_ble_setup.py).
     voiceControlChr.setProperties(CHR_PROPS_WRITE);
     voiceControlChr.setPermission(SECMODE_NO_ACCESS, SECMODE_ENC_NO_MITM);
-    voiceControlChr.setMaxLen(2);
+    // Variable length (Bluefruit's default vlen = 1) up to the 3-byte STOP;
+    // 2 bytes was too short for it since 0.4.5 (voice_gesture.h).
+    voiceControlChr.setMaxLen(VOICE_CONTROL_MAX_LEN);
     voiceControlChr.setWriteAuthorizeCallback(onVoiceControlAuthorize, false);
     voiceControlChr.begin();
   }
@@ -3305,14 +3634,24 @@ void setup() {
 #if RAILY_VDD_BENCH
   restoreVddBench();
 #endif
+  watchdogFeed();
 
   startAdv();
   startMotorPin();
+  watchdogFeed();
 #if RAILY_BUTTON
   startButton();  // after advertising, like the motor pin (the pre-flash gate)
 #endif
   Serial.println(deviceInfoJson);
-  Serial.println("Type p + Enter to simulate a button press, i + Enter to reprint device info, s + Enter to print the sealed secret, w + Enter to open the bind window, r + Enter to reset, o<scene>[shape[material[locale]]] + Enter to show a screen scene, of + Enter to drop the pin (the fall), c<hex byte> + Enter to play an event_ack byte (motor rhythm), x + Enter to erase every BLE bond");
+  // Only what this build has: the bench commands only with RAILY_BENCH_SERIAL.
+  Serial.println(
+      "Type p + Enter to simulate a button press, i + Enter to reprint device info, r + Enter to reset"
+#if RAILY_BENCH_SERIAL
+      ", s + Enter to print the sealed secret, w + Enter to open the bind window, o<scene>[shape[material[locale]]] "
+      "+ Enter to show a screen scene, of + Enter to drop the pin (the fall), c<hex byte> + Enter to play an "
+      "event_ack byte (motor rhythm), x + Enter to erase every BLE bond"
+#endif
+  );
 #if RAILY_VDD_BENCH
   Serial.println("VDD bench: v to dump the log, V1/V0 to start/stop it, Vx to erase it, L1/L0 for the LED load");
 #endif
@@ -3322,6 +3661,9 @@ void setup() {
 #if RAILY_VOICE_BENCH
   Serial.println("Voice bench: v / V to begin / end a fake hold (frames as VF lines), m for raw PCM (VP lines) "
                  "on/off, G<hh> for the PDM gain (00-50), d for the mic power drive, A for the GATT table");
+#endif
+#if RAILY_WATCHDOG_BENCH
+  Serial.println("Watchdog bench: H + Enter hangs loop() on purpose; the watchdog resets the pin (reset 0x2)");
 #endif
   printStackMarks("boot");
   Serial.println("ready");
@@ -3448,11 +3790,30 @@ static __attribute__((noinline)) void serviceBonds() {
     Serial.printf("bond: phone wrote service changed cccd 0x%04x\n",
                   (unsigned)serviceChangedCccdValue.load(std::memory_order_relaxed));
   }
+  if (subBudgetCutPending.exchange(false, std::memory_order_relaxed)) {
+    const uint8_t why = subBudgetCutWhy.load(std::memory_order_relaxed);
+    Serial.printf("bond: link closed, subscription budget spent (%s%s%s; %lu changes, %lu closed since boot)\n",
+                  (why & SUB_CUT_PHONE) ? "phone" : "", (why & SUB_CUT_PHONE) && (why & SUB_CUT_SHARED) ? " and " : "",
+                  (why & SUB_CUT_SHARED) ? "shared" : "", (unsigned long)subBudgetChanges.load(std::memory_order_relaxed),
+                  (unsigned long)subBudgetCuts.load(std::memory_order_relaxed));
+  }
   if (serviceChangedCheckPending.exchange(false, std::memory_order_relaxed)) sendServiceChangedIfDue();
-  if (bondCapPending.load(std::memory_order_relaxed) &&
-      (int32_t)(now - bondCapDueMs.load(std::memory_order_relaxed)) >= 0) {
-    bondCapPending.store(false, std::memory_order_relaxed);
-    enforceBondCap();
+  // The bond cap pass (BondCapClock): the lock-free check first, the
+  // decision under passMutex, which the BLE task's pairing also takes.
+  if (bondCapPending.load(std::memory_order_relaxed)) {
+    xSemaphoreTake(passMutex, portMAX_DELAY);
+    BondCapClock cap = bondCapLocked();
+    const bool capDue = cap.take(now);
+    if (capDue) bondCapPublishLocked(cap);
+    xSemaphoreGive(passMutex);
+    if (capDue) {
+      enforceBondCap();
+      xSemaphoreTake(passMutex, portMAX_DELAY);
+      cap = bondCapLocked();  // a pairing during the pass may have changed it
+      cap.passDone(millis(), BOND_CAP_DELAY_MS);
+      bondCapPublishLocked(cap);
+      xSemaphoreGive(passMutex);
+    }
   }
   // A new admission gets its pairing's key fingerprint before the record is
   // written (at most one file read a second while one is pending: Bluefruit
@@ -3493,6 +3854,7 @@ static __attribute__((noinline)) void serviceBonds() {
   }
 }
 
+#if RAILY_BENCH_SERIAL
 // Serial `x`: every bond and admission, keeps the secret, the owned flag
 // and the counter (USB is physical access, a bench aid like `w`).
 static void eraseBondsFromSerial() {
@@ -3502,6 +3864,7 @@ static void eraseBondsFromSerial() {
   xSemaphoreGive(passMutex);
   Serial.println("bond: every bond erased (serial x)");
 }
+#endif
 
 // Serial `i`'s "bond" (ble-bonding.md): bond files, admitted phones, this
 // link. Its own frame, so printDeviceInfo stays within its budget.
@@ -3523,6 +3886,14 @@ static __attribute__((noinline)) void printBondBench(char* line, size_t size) {
                (unsigned long)untrustedAcks.load(std::memory_order_relaxed),
                (unsigned long)untrustedPressCommands.load(std::memory_order_relaxed));
   if (n > 0 && n < (int)size) Serial.print(line);
+  // The subscription budget (subscription_budget.h): changes of phones that
+  // are not admitted counted since boot, and the links it closed.
+  n = formatSubBudgetBenchJson(line, size, subBudgetChanges.load(std::memory_order_relaxed),
+                               subBudgetCuts.load(std::memory_order_relaxed));
+  if (n > 0 && n < (int)size) {
+    Serial.print(',');
+    Serial.print(line);
+  }
 }
 
 // Serial `i`'s "haptic" (docs/pins/firmware.md «Vibration motor»): which
@@ -3574,6 +3945,7 @@ static __attribute__((noinline)) void printDeviceInfo() {
   Serial.println('}');
 }
 
+#if RAILY_BENCH_SERIAL
 // Bench only (USB is physical access); the same bytes device_secret serves.
 // Runs in loop(), like resealSecret(), so the buffer is never mid-write.
 static void printSealedSecret() {
@@ -3583,6 +3955,7 @@ static void printSealedSecret() {
   }
   Serial.println();
 }
+#endif
 
 #if RAILY_OLED
 // The panel is probed from loop(), once, this long after the first pass:
@@ -3666,7 +4039,9 @@ static void updateScreen(uint32_t now, uint8_t ack, bool linkUp) {
 #else
   if (!changed || (drawnOnce && (uint32_t)(now - drawnAtMs) < OLED_FRAME_MS)) return;
 #endif
-  oledShow(frame);
+  // A frame the held bus skipped stays undrawn: a later pass sends it (the
+  // 1 s idle backstop at the latest).
+  if (!oledShow(frame)) return;
   drawn = frame;
   drawnOnce = true;
   drawnAtMs = now;
@@ -3683,6 +4058,9 @@ static void updateScreen(uint32_t now, uint8_t ack, bool linkUp) {
 // that does not fit falls through and is handled as usual: `o` + a
 // non-scene prints the scenes, `c` + a non-hex digit prints a hint, and
 // `op` / `cp` still press. Returns false when c is not part of a command.
+// Bench builds only: a release has no parser, so it never holds a character
+// back and each byte stands alone (`or` does nothing, `op` presses).
+#if RAILY_BENCH_SERIAL
 static __attribute__((noinline)) bool benchSerialChar(char c) {
   static BenchSerial bench = {};
   BenchCommand command;
@@ -3723,6 +4101,7 @@ static __attribute__((noinline)) bool benchSerialChar(char c) {
   }
   return consumed;
 }
+#endif
 
 // The LED, the screen and the motor. One read of the latest event_ack
 // byte feeds all three (the motor takes the raw byte). Not inlined, so its frame stays off loop()'s stack budget.
@@ -3783,6 +4162,7 @@ static __attribute__((noinline)) uint32_t idleSleepMs(uint32_t now) {
                serviceChangedCheckPending.load(std::memory_order_relaxed) ||
                bondCccdRepairPending.load(std::memory_order_relaxed) ||
                serviceChangedCccdPending.load(std::memory_order_relaxed) ||
+               subBudgetCutPending.load(std::memory_order_relaxed) ||
                serviceChangedConfirmedHandle.load(std::memory_order_relaxed) != BLE_CONN_HANDLE_INVALID);
   xSemaphoreTake(passMutex, portMAX_DELAY);
   const bool mailbox = screenMailboxFull;
@@ -3873,7 +4253,8 @@ static void printIdleBench() {
 
 #if RAILY_SHIP_MODE
 // One pass of the ship radio rule (ship_mode.h): advertising off while the
-// pin ships, back on when it wakes (the 3 s hold, serial `w`, a boot that
+// pin ships, back on when it wakes (the 3 s hold, serial `[` held 3 s,
+// serial `w` in a bench build, a boot that
 // opens the window). A link is never dropped. Loop task only.
 static int8_t shipLogged = -1;
 static __attribute__((noinline)) void serviceShipRadio() {
@@ -3922,8 +4303,8 @@ static __attribute__((noinline)) void servicePowerOff() {
   xSemaphoreTake(passMutex, portMAX_DELAY);
   const bool held = heldPress.held;
   const bool dirty = bondTableDirty;
-  // No secret yet (the RNG or flash failed at boot): loop() retries every
-  // 5 s, so stay up until it has one.
+  // No secret yet (the RNG or flash failed at boot, or the record did not
+  // read): loop() retries every 5 s, so stay up until it has one.
   const bool secretMissing = !hasSecret;
   xSemaphoreGive(passMutex);
 #if RAILY_VDD_BENCH
@@ -3955,6 +4336,9 @@ void loop() {
   // an empty one after it.
   ulTaskNotifyTake(pdTRUE, 0);
 #endif
+  // The only feed after setup(): a pass that never ends lets the watchdog
+  // reset the pin (watchdog.h).
+  watchdogFeed();
   if ((rebootArmed || enterDfuArmed) && (int32_t)(millis() - rebootAtMs) >= 0) {
     Serial.println(enterDfuArmed ? "pass: enter DFU" : "pass: reboot");
     Serial.flush();
@@ -3976,8 +4360,13 @@ void loop() {
   runPendingPassAction();
   if (dropLinkArmed && (int32_t)(millis() - dropLinkAtMs) >= 0) {
     dropLinkArmed = false;
-    Bluefruit.disconnect(dropLinkHandle);
-    Serial.println("bond: bonded link dropped after the bond erase");
+    xSemaphoreTake(passMutex, portMAX_DELAY);
+    const bool sameLink = linkCacheHandle == dropLinkHandle && linkEpoch == dropLinkEpoch;
+    xSemaphoreGive(passMutex);
+    if (sameLink) {
+      Bluefruit.disconnect(dropLinkHandle);
+      Serial.println("bond: bonded link dropped after the bond erase");
+    }
   }
   serviceBonds();
 #if RAILY_BUTTON
@@ -3995,11 +4384,25 @@ void loop() {
   serviceVddLog();
 #endif
   // A secret that could not be made at boot (RNG or flash) is retried
-  // every 5 s instead of waiting for a reboot.
+  // every 5 s instead of waiting for a reboot. A record that could not be
+  // read is read again: once it reads, the steps setup() skipped run as on a
+  // normal boot (the mascot, the bond table). It is replaced only after
+  // SECRET_UNREADABLE_MAX_TRIES reads in a row fail (record_store.h).
   static uint32_t lastSecretRetryMs = 0;
   if (!hasSecret && (uint32_t)(millis() - lastSecretRetryMs) >= 5000) {
     lastSecretRetryMs = millis();
-    if (replaceSecret()) {
+    if (secretUnreadable) {
+      const SecretLoad load = restoreSecret();
+      if (load == SECRET_LOADED) {
+        Serial.println("device secret: record read on retry");
+        restoreMascot();
+        restoreBondTable();
+        resealSecret();
+      } else if (hasSecret) {  // gone, invalid, or unreadable too long: minted, as on a first boot
+        openBindWindow("new secret");
+        resealSecret();
+      }
+    } else if (replaceSecret()) {
       openBindWindow("new secret");
       resealSecret();
     }
@@ -4050,7 +4453,9 @@ void loop() {
 #if RAILY_VOICE_BENCH
     if (voiceSerialPending() && voiceSerialChar(c)) continue;  // the hex digits of G<hh>, before `c`
 #endif
+#if RAILY_BENCH_SERIAL
     if (benchSerialChar(c)) continue;
+#endif
 #if RAILY_VDD_BENCH
     if (vddSerialChar(c)) continue;  // after the bench parser: `ov` stays a scene
 #endif
@@ -4070,21 +4475,40 @@ void loop() {
       printShipBench();
 #endif
     }
+#if RAILY_BENCH_SERIAL
     if (c == 's' || c == 'S') printSealedSecret();
     // USB is physical access: it opens the bind window like a RESET press.
     if (c == 'w' || c == 'W') openBindWindow("serial w");
     if (c == 'x' || c == 'X') eraseBondsFromSerial();
+#endif
 #if RAILY_SHIP_MODE
     // The bench's hand on D1: [ presses, ] releases (debounced as the pin).
+    // In every Air build, like p for a press: it stands in for the button on
+    // a board without one (air-ship-mode.md §6) and does only what the
+    // button does.
     if (c == '[' || c == ']') {
       benchButtonDown = c == '[';
       Serial.println(benchButtonDown ? "bench: button down" : "bench: button up");
     }
 #endif
+    // In every build: the device boot smoke reads the shipping image's boot
+    // log after this restart. A software reset keeps the bind window closed.
     if (c == 'r' || c == 'R') {
       delay(50);
       NVIC_SystemReset();
     }
+#if RAILY_WATCHDOG_BENCH
+    // Bench only: loop() stops here for good, as a busy-wait in a library
+    // would; the BLE link stays up, presses and the screen die, and the
+    // watchdog resets the pin within WATCHDOG_TIMEOUT_MS (reset 0x2).
+    if (c == 'H') {
+      Serial.println("watchdog bench: loop() hangs now");
+      Serial.flush();
+      for (;;) {
+        __NOP();
+      }
+    }
+#endif
   }
 #if RAILY_IDLE_SLEEP
   idleBlock();

@@ -67,6 +67,8 @@ bool oledProbe(bool wireHeld) {
     if (!wireBusPulledUp()) return false;
     Wire.begin();
     Wire.setClock(OLED_I2C_HZ);
+  } else if (!wireBusReady()) {
+    return false;  // the motor's bus is held low: no transfer on it
   }
   Wire.beginTransmission(OLED_I2C_ADDRESS);
   if (Wire.endTransmission() != 0) {
@@ -90,14 +92,18 @@ bool oledPresent() {
   return present;
 }
 
-void oledShow(const ScreenFrame& frame) {
-  if (!present) return;
+bool oledShow(const ScreenFrame& frame) {
+  if (!present) return true;
+  // Every frame's transfers wait for an idle bus (wire_guard.h): a held
+  // line skips the frame, nothing here changes, and the caller draws it
+  // again on a later pass.
+  if (!wireBusReady()) return false;
   if (frame.contrast == 0 || frame.scene == OLED_SCENE_OFF) {
     if (panelOn) {
       panelSleep();
       panelOn = false;
     }
-    return;
+    return true;
   }
   if (!imageValid || !frame.sameImage(shown)) {
     oledCompose(frame, canvas, scratch);
@@ -127,5 +133,6 @@ void oledShow(const ScreenFrame& frame) {
     panelWake();
     panelOn = true;
   }
+  return true;
 }
 #endif

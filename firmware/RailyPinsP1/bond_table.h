@@ -342,3 +342,54 @@ static inline int formatBondBenchJson(char* buf, size_t size, size_t bonds, size
                   (unsigned)bonds, (unsigned)admitted, encrypted ? 1u : 0u, (unsigned)level,
                   (unsigned)keySize, trusted ? 1u : 0u);
 }
+
+// When loop() runs the bond cap pass (D-5). A completed pairing asks for a
+// pass one delay later (BOND_CAP_DELAY_MS in the sketch), so Bluefruit's
+// own deferred save of the new bond file lands first. A pending deadline is
+// never moved later: a pairing that comes while a pass is pending only asks
+// for one more pass, scheduled one delay after that pass ran. Otherwise a
+// phone pairing more often than every delay would postpone the pass forever
+// and bond files would pile up on the volume the counter and the secret
+// share. An earlier deadline is fine (an admission that evicted a phone
+// wants its bond file gone now). The sketch keeps it under passMutex.
+struct BondCapClock {
+  bool pending;    // a pass is due at dueMs
+  uint32_t dueMs;  // millis(), compared by unsigned difference (the wrap is fine)
+  bool rerun;      // a pairing came while a pass was pending: one more pass after it
+
+  // A pairing completed (the BLE task).
+  void paired(uint32_t now, uint32_t delayMs) {
+    if (pending) {
+      rerun = true;
+      return;
+    }
+    dueMs = now + delayMs;
+    pending = true;
+  }
+
+  // An admission pushed a phone out of the table: the pass now. A pairing's
+  // later deadline moved earlier keeps its own pass a delay after this one.
+  void evicted(uint32_t now) {
+    if (pending && (int32_t)(dueMs - now) <= 0) return;  // already due: never later
+    if (pending) rerun = true;
+    dueMs = now;
+    pending = true;
+  }
+
+  // loop(): true once the pass is due; the pass then runs.
+  bool take(uint32_t now) {
+    if (!pending || (int32_t)(now - dueMs) < 0) return false;
+    pending = false;
+    return true;
+  }
+
+  // loop(), after the pass. A pass already pending again (a pairing or an
+  // eviction during this one) keeps the rerun for after itself: an extra
+  // pass is harmless, a lost one is not.
+  void passDone(uint32_t now, uint32_t delayMs) {
+    if (!rerun || pending) return;
+    rerun = false;
+    dueMs = now + delayMs;
+    pending = true;
+  }
+};

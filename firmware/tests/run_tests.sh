@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Host-side unit tests for the pure firmware headers (counter restore,
-# press and feedback gates, SHA-256/HMAC, server pass, secret record,
-# bind window, device_info, BLE bond table and the bond files' CCCD field, the held press of bonding stage 2, screen_state payload, vibration rhythms,
+# the flash steps that store the counter, secret, bond table and mascot, on a
+# fake file system (record_store.h, fake_fs.h), press and feedback gates, SHA-256/HMAC, server pass, secret record,
+# bind window, device_info, BLE bond table and the bond files' CCCD field, the subscription budget for phones that are not admitted, the held press of bonding stage 2, screen_state payload, vibration rhythms,
 # the DA7280 haptic driver on Wire and on bit-banged I2C and its D0 fallback, the OLED screen
 # state (press, screen_state, fall, «found you», the agent's counts and notifications, voice from the pin), the mascot record and composer,
-# serial `i`'s screen_state bench object), the Keyring Air sleep and button (idle_sleep.h) and ship mode (ship_mode.h), battery telemetry (battery_curve.h) and the VDD discharge log (vdd_log.h), voice from the pin (adpcm.h + the golden vectors, voice_frame.h, voice_ring.h, voice_board.h, voice_gesture.h), the Air factory test's checks. No Arduino toolchain needed: g++, and python3 with
+# serial `i`'s screen_state bench object), the Keyring Air sleep and button (idle_sleep.h) and ship mode (ship_mode.h), battery telemetry (battery_curve.h) and the VDD discharge log (vdd_log.h), voice from the pin (adpcm.h + the golden vectors, voice_frame.h, voice_ring.h, voice_board.h, voice_gesture.h), the Air factory test's checks, the GATT UUIDs and server-pass codes across firmware, app and Mac tools (check_protocol_constants.py). No Arduino toolchain needed: g++, and python3 with
 # Pillow for the OLED golden frames and asset checks.
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -19,6 +20,11 @@ trap 'rm -rf "$BUILD_DIR"' EXIT
 g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
     test_counter_select.cpp -o "$BUILD_DIR/test"
 "$BUILD_DIR/test"
+# The flash steps (record_store.h) on a RAM file system that loses closes,
+# shortens writes and cuts the power before every operation (fake_fs.h).
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+    test_record_store.cpp -o "$BUILD_DIR/test_record_store"
+"$BUILD_DIR/test_record_store"
 g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
     test_press_command.cpp -o "$BUILD_DIR/test_press_command"
 "$BUILD_DIR/test_press_command"
@@ -50,6 +56,9 @@ python3 -B check_dfu_bootloader_guard.py
 g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
     test_bond_cccd_file.cpp -o "$BUILD_DIR/test_bond_cccd_file"
 "$BUILD_DIR/test_bond_cccd_file"
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+    test_subscription_budget.cpp -o "$BUILD_DIR/test_subscription_budget"
+"$BUILD_DIR/test_subscription_budget"
 g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
     test_press_hold.cpp -o "$BUILD_DIR/test_press_hold"
 "$BUILD_DIR/test_press_hold"
@@ -112,6 +121,7 @@ g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined -DRAILY_SHIP_M
     test_device_name.cpp -o "$BUILD_DIR/test_device_name_air"
 "$BUILD_DIR/test_device_name_air"
 python3 -B check_device_name.py
+python3 -B check_protocol_constants.py
 g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined \
     test_battery_curve.cpp -o "$BUILD_DIR/test_battery_curve"
 "$BUILD_DIR/test_battery_curve"
@@ -177,6 +187,7 @@ python3 -B check_oled_assets.py
 python3 check_ble_setup.py
 python3 check_authorize_replies.py
 python3 check_reset_reason.py
+python3 -B check_bench_serial.py
 python3 -B check_service_changed_range.py
 python3 -B check_oled_boot_order.py
 python3 -B check_fall_path.py

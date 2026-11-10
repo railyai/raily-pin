@@ -21,6 +21,8 @@ static const uint8_t MASCOT_RECORD_MAGIC0 = 'R';
 static const uint8_t MASCOT_RECORD_MAGIC1 = 'M';
 static const uint32_t MASCOT_PERSIST_MIN_MS = 3600000;  // once an hour
 static const uint8_t MASCOT_DEFAULT = 0x00;             // pebble, satin
+// MascotPersist::stored after a failed write: never a valid mascot.
+static const uint8_t MASCOT_STORED_UNKNOWN = 0xFF;
 
 static inline bool mascotValid(uint8_t value) {
   return (value >> 4) < SCREEN_SHAPE_COUNT && (value & 0x0F) < SCREEN_MATERIAL_COUNT;
@@ -44,7 +46,7 @@ static inline bool mascotRecordDecode(const uint8_t* data, uint32_t len, uint8_t
 
 // Loop-only; zero-initialise.
 struct MascotPersist {
-  uint8_t stored;       // what the flash holds (MASCOT_DEFAULT when nothing)
+  uint8_t stored;       // what the flash holds (MASCOT_DEFAULT when nothing, MASCOT_STORED_UNKNOWN after a failed write)
   uint8_t pending;
   bool hasPending;
   bool wrote;           // a write was attempted this boot
@@ -70,11 +72,16 @@ struct MascotPersist {
 
   // The write happened (ok) or failed; either way the next waits an hour,
   // so a failing flash is not retried on every pass. A failed value stays
-  // pending.
+  // pending, and what the flash holds is unknown from then on (a short write
+  // can leave a torn record): every later offer is written, a change back
+  // to the old value included.
   void written(uint32_t now, uint8_t value, bool ok) {
     wrote = true;
     lastWriteMs = now;
-    if (!ok) return;
+    if (!ok) {
+      stored = MASCOT_STORED_UNKNOWN;
+      return;
+    }
     stored = value;
     if (pending == value) hasPending = false;
   }

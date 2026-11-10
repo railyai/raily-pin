@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "../RailyPinsP1/da7280.h"
+#include "../RailyPinsP1/wire_guard.h"
 // The Air factory test is private (owner, 2026-10-08): the public mirror of
 // these tests has no ../RailyAirFactoryTest, so the cross-check below runs
 // only where the header exists. run_tests.sh passes
@@ -598,6 +599,58 @@ static void testFactoryAgrees() {
 }
 #endif
 
+// wire_guard.h: when the hardware Wire bus (OLED, Air DA7280) may run a
+// batch of transfers, and when it is clocked free instead.
+static void testWireGuardIdle() {
+  WireGuard guard = {};
+  expect(guard.before(true, 0) == WIRE_GO, "wire guard: both lines high: go");
+  expect(!guard.freedNow && guard.skipped == 0 && guard.recoveries == 0, "wire guard: an idle bus counts nothing");
+}
+
+static void testWireGuardRecoveryRate() {
+  WireGuard guard = {};
+  expect(guard.before(false, 5000) == WIRE_RECOVER, "wire guard: a held line: recover at once");
+  expect(guard.episodeTries == 1 && guard.recoveries == 1, "wire guard: the first recovery of the episode");
+  expect(!guard.afterRecovery(false), "wire guard: still held after the clocks: skip");
+  expect(guard.before(false, 5000 + WIRE_RECOVERY_INTERVAL_MS - 1) == WIRE_SKIP,
+         "wire guard: no second recovery within the interval");
+  expect(guard.skipped == 2, "wire guard: both skipped batches counted");
+  expect(guard.before(false, 5000 + WIRE_RECOVERY_INTERVAL_MS) == WIRE_RECOVER,
+         "wire guard: one recovery per interval");
+  expect(guard.episodeTries == 2 && guard.recoveries == 2, "wire guard: later recoveries are not the first");
+}
+
+static void testWireGuardFreedByRecovery() {
+  WireGuard guard = {};
+  expect(guard.before(false, 100) == WIRE_RECOVER, "wire guard freed: recover");
+  expect(guard.afterRecovery(true), "wire guard freed: lines high after the clocks: go");
+  expect(!guard.stuck && guard.episodeTries == 0, "wire guard freed: the episode ends");
+  expect(guard.before(true, 101) == WIRE_GO && !guard.freedNow,
+         "wire guard freed: no second «free again» report");
+  // A new episode within the interval of the last recovery waits for it.
+  expect(guard.before(false, 200) == WIRE_SKIP, "wire guard freed: a new hold waits out the interval");
+  expect(guard.before(false, 100 + WIRE_RECOVERY_INTERVAL_MS) == WIRE_RECOVER,
+         "wire guard freed: then it recovers");
+  expect(guard.episodeTries == 1, "wire guard freed: the new episode's first recovery");
+}
+
+static void testWireGuardFreedOnItsOwn() {
+  WireGuard guard = {};
+  guard.before(false, 0);
+  guard.afterRecovery(false);
+  expect(guard.before(true, 10) == WIRE_GO && guard.freedNow, "wire guard: a bus that lets go reports once");
+  expect(guard.before(true, 20) == WIRE_GO && !guard.freedNow, "wire guard: and only once");
+}
+
+static void testWireGuardWrap() {
+  WireGuard guard = {};
+  expect(guard.before(false, 0xFFFFFF00u) == WIRE_RECOVER, "wire guard wrap: recover before the wrap");
+  guard.afterRecovery(false);
+  expect(guard.before(false, 0x00000010u) == WIRE_SKIP, "wire guard wrap: 272 ms later, across the wrap: skip");
+  expect(guard.before(false, 0xFFFFFF00u + WIRE_RECOVERY_INTERVAL_MS) == WIRE_RECOVER,
+         "wire guard wrap: a full interval later: recover");
+}
+
 int main() {
   testInit();
   testPulse();
@@ -618,6 +671,11 @@ int main() {
   testWireNothing();
   testWireRuntimeNack();
   testStopWritesDoNotShortCircuit();
+  testWireGuardIdle();
+  testWireGuardRecoveryRate();
+  testWireGuardFreedByRecovery();
+  testWireGuardFreedOnItsOwn();
+  testWireGuardWrap();
 #ifdef RAILY_HAVE_FACTORY_CHECKS
   testFactoryAgrees();
 #endif

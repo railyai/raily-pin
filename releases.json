@@ -72,9 +72,21 @@
         "sha256": "44a0ff7a1da354d13b3c4be5763a492d1adc693480e415c15b4fa65dcb43212c"
       },
       "source_commit": "27d5ca9be609991b742308648b56c37bda3c93c7"
+    },
+    {
+      "version": "0.4.5",
+      "zip": {
+        "file": "raily-pin-0.4.5.zip",
+        "sha256": "2fa2b23bccb188c05fa27fd0197072916719290577575627649beaa806c89ab0"
+      },
+      "uf2": {
+        "file": "raily-pin-0.4.5.uf2",
+        "sha256": "c7b0c225eee82628ebc32037ed1a9b23242a9654d62784d3a7b14e66d0e589f2"
+      },
+      "source_commit": "5f1a185aef629b1e7837e0a636cc775ece7f905b"
     }
   ],
-  "latest": "0.4.4",
+  "latest": "0.4.5",
   "bootloader": {
     "version": "0.9.2-OTAFIX2.3-BP1.4",
     "accept_prefix": "0.9.2-OTAFIX2.3",

@@ -105,7 +105,10 @@ static inline void sha256Final(Sha256& ctx, uint8_t digest[32]) {
   }
 }
 
-static inline void sha256(const uint8_t* data, size_t length, uint8_t digest[32]) {
+// noinline: its frame (the context and the message schedule, about 470 B)
+// is budgeted under its own name (stack_budget.json), so it never folds
+// into a caller's, such as the secret restore that loop() can retry.
+static __attribute__((noinline)) void sha256(const uint8_t* data, size_t length, uint8_t digest[32]) {
   Sha256 ctx;
   sha256Init(ctx);
   sha256Update(ctx, data, length);

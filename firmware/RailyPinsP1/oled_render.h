@@ -28,6 +28,7 @@ bool oledPresent();
 
 // Draws the frame if it differs from the one on the glass: only the 8 x 8
 // tiles that changed go over I2C, contrast only when it moved, and a frame
-// with contrast 0 puts the panel to sleep (charge pump off).
-void oledShow(const ScreenFrame& frame);
+// with contrast 0 puts the panel to sleep (charge pump off). False: the
+// Wire bus was held low (wire_guard.h), nothing was sent, draw it again.
+bool oledShow(const ScreenFrame& frame);
 #endif

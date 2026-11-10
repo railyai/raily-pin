@@ -7,6 +7,11 @@
 
 #include <Arduino.h>
 
+// Once the bus runs: true when Wire may carry its next batch of transfers
+// (both lines high, or freed by a 9-clock recovery; wire_guard.h). Defined
+// in RailyPinsP1.ino; loop task only.
+bool wireBusReady();
+
 static inline void releaseWirePins() {
   nrf_gpio_cfg_default(g_ADigitalPinMap[PIN_WIRE_SDA]);
   nrf_gpio_cfg_default(g_ADigitalPinMap[PIN_WIRE_SCL]);

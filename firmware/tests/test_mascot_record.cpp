@@ -74,6 +74,20 @@ static void policy() {
   expect(w.due(t0 + MASCOT_PERSIST_MIN_MS, &value), "and ends on time after it");
   w.offer(0x72, true);
   expect(w.due(t0 + MASCOT_PERSIST_MIN_MS, &value) && value == 0x21, "an invalid look is never offered");
+
+  // After a failed write the flash may hold a torn record: a change back to
+  // the old value is written too, not cancelled.
+  MascotPersist f = {};
+  f.loaded(0x12);
+  f.offer(0x31, true);
+  f.written(0, 0x31, false);
+  expect(!mascotValid(MASCOT_STORED_UNKNOWN), "the unknown marker is never a valid mascot");
+  f.offer(0x12, true);
+  expect(f.due(MASCOT_PERSIST_MIN_MS, &value) && value == 0x12,
+         "after a failed write a change back to the old value is still written");
+  f.written(MASCOT_PERSIST_MIN_MS, 0x12, true);
+  f.offer(0x12, true);
+  expect(!f.due(2 * MASCOT_PERSIST_MIN_MS, &value), "and once written it is known again");
 }
 
 int main() {
