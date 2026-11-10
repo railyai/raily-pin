@@ -3,6 +3,7 @@
 #include <stdlib.h>
 
 #include "../RailyPinsP1/idle_sleep.h"
+#include "../RailyPinsP1/watchdog.h"
 
 static int failures = 0;
 
@@ -299,6 +300,24 @@ static void testRing() {
   expect(ring.push(true, 500) && ring.pop(&level, &at) && at == 500, "the ring keeps working after a wrap of its index");
 }
 
+// watchdog.h: the timeout against the longest legitimate stretches without
+// a feed, and the CRV arithmetic.
+static void testWatchdog() {
+  expect(watchdogCrv(WATCHDOG_TIMEOUT_MS) == 16u * 32768u, "watchdog: 16 s is 524288 ticks of 32.768 kHz");
+  expect(watchdogCrvMs(watchdogCrv(WATCHDOG_TIMEOUT_MS)) == WATCHDOG_TIMEOUT_MS, "watchdog: CRV reads back as 16 s");
+  expect(watchdogCrv(0) == WATCHDOG_CRV_MIN, "watchdog: never below the smallest CRV");
+  expect(watchdogCrv(200000000u) == 0xFFFFFFFFu, "watchdog: a huge timeout saturates");
+  expect(watchdogCrvMs(0xFFFFFFFFu) > WATCHDOG_TIMEOUT_MS, "watchdog: a foreign CRV reads as its own ms");
+  // The idle sleep wakes loop() at least every backstop: many feeds per timeout.
+  expect(IDLE_BACKSTOP_MS * 8 <= WATCHDOG_TIMEOUT_MS, "watchdog: the 1 s idle backstop is far inside the timeout");
+  // A seal wait that runs out leaves the rest of the pass time to feed.
+  expect(SEAL_WAIT_MS * 3 <= WATCHDOG_TIMEOUT_MS, "watchdog: the seal wait is at most a third of the timeout");
+  // The bootloader's USB serial DFU erases the image unfed: 85 ms a page
+  // (nRF52840 PS, NVMC tERASEPAGE), +5 % on the internal oscillator.
+  const uint32_t pages = (WATCHDOG_TIMEOUT_MS * 100u) / (85u * 105u);
+  expect(pages >= 150, "watchdog: a serial DFU may erase 150+ pages (600 KB) between feeds");
+}
+
 int main() {
   testCaps();
   testPendingWins();
@@ -317,6 +336,7 @@ int main() {
   testOutOfOrder();
   testWrap();
   testRing();
+  testWatchdog();
   if (failures) {
     printf("%d failure(s)\n", failures);
     return 1;

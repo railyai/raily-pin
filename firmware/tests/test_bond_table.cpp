@@ -245,6 +245,77 @@ static void testKeyPrint() {
   expect(!table.keepIfSameKeys(b, print), "a phone not in the table: nothing to drop");
 }
 
+// The cap pass's clock: a pending deadline never moves later (D-5).
+static void testCapClock() {
+  const uint32_t D = 2000;
+  BondCapClock c = {false, 0, false};
+  c.paired(1000, D);
+  expect(c.pending && c.dueMs == 3000 && !c.rerun, "first pairing: the pass one delay later");
+  c.paired(2500, D);
+  expect(c.dueMs == 3000 && c.rerun, "a second pairing before it: the deadline stays, one more pass asked");
+  c.paired(2900, D);
+  expect(c.dueMs == 3000 && c.rerun, "a third: still not moved");
+  expect(!c.take(2999) && c.pending, "not before the deadline");
+  expect(c.take(3000) && !c.pending, "at the deadline: the pass runs");
+  expect(!c.take(3001), "once");
+  c.passDone(3050, D);
+  expect(c.pending && c.dueMs == 5050 && !c.rerun, "after the pass: the rerun one delay later");
+  expect(c.take(5050), "the rerun runs");
+  c.passDone(5060, D);
+  expect(!c.pending && !c.rerun, "no pairing since: nothing more");
+
+  // A peer that pairs every 1.5 s: the pass still runs every delay or so.
+  BondCapClock flood = {false, 0, false};
+  uint32_t passes = 0;
+  for (uint32_t t = 0; t < 60000; t += 10) {
+    if (t % 1500 == 0) flood.paired(t, D);
+    if (flood.take(t)) {
+      passes++;
+      flood.passDone(t, D);
+    }
+  }
+  expect(passes >= 25, "a pairing every 1.5 s cannot postpone the pass");
+
+  // A pairing that lands between the take and the pass's end (the BLE task
+  // preempts loop()): its own pass is scheduled, the earlier rerun is kept.
+  BondCapClock race = {false, 0, false};
+  race.paired(0, D);
+  race.paired(500, D);
+  expect(race.take(2000), "the pass is taken");
+  race.paired(2001, D);
+  expect(race.pending && race.dueMs == 4001, "a pairing during the pass gets its own deadline");
+  race.passDone(2002, D);
+  expect(race.pending && race.dueMs == 4001 && race.rerun, "the pending pass is not moved, the rerun is kept");
+  expect(race.take(4001), "that pass runs");
+  race.passDone(4002, D);
+  expect(race.pending && race.dueMs == 6002 && !race.rerun, "and the kept rerun follows it: no pass lost");
+
+  // An admission that evicted a phone: due now, earlier is fine.
+  BondCapClock admit = {false, 0, false};
+  admit.evicted(700);
+  expect(admit.pending && admit.dueMs == 700 && !admit.rerun, "an eviction with nothing pending: the pass now");
+  BondCapClock pulled = {false, 0, false};
+  pulled.paired(1000, D);
+  pulled.evicted(1500);
+  expect(pulled.pending && pulled.dueMs == 1500 && pulled.rerun,
+         "an eviction pulls a pairing's deadline earlier and keeps a pass a delay later for its bond file");
+  BondCapClock overdue = {true, 900, false};
+  overdue.evicted(1000);
+  expect(overdue.dueMs == 900 && !overdue.rerun, "an eviction never moves an overdue deadline later");
+
+  // The millis() wrap: unsigned difference.
+  BondCapClock wrap = {false, 0, false};
+  wrap.paired(0xFFFFFFFFu - 500, D);
+  expect(wrap.dueMs == 1499u, "the deadline wraps");
+  wrap.paired(0xFFFFFFFFu - 100, D);
+  expect(wrap.dueMs == 1499u && wrap.rerun, "a pairing across the wrap does not move it");
+  expect(!wrap.take(0xFFFFFFFFu) && !wrap.take(1498), "not early across the wrap");
+  expect(wrap.take(1499), "on time across the wrap");
+  BondCapClock rerun = {false, 0, true};
+  rerun.passDone(0xFFFFFFFFu - 100, D);
+  expect(rerun.pending && rerun.dueMs == D - 101, "a rerun scheduled just before the wrap wraps too");
+}
+
 static void testBench() {
   char buf[128];
   int n = formatBondBenchJson(buf, sizeof(buf), 255, 8, true, 4, 16, true);
@@ -262,6 +333,7 @@ int main() {
   testServiceChanged();
   testRecord();
   testKeyPrint();
+  testCapClock();
   testBench();
   if (failures) {
     printf("%d failure(s)\n", failures);

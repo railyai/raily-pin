@@ -14,8 +14,15 @@ import sys
 
 SKETCH = pathlib.Path(__file__).resolve().parents[1] / "RailyPinsP1" / "RailyPinsP1.ino"
 # The characteristics whose checks live in an authorize callback: without
-# one, writes are ACKed unchecked, so a missing callback fails too.
-REQUIRED = {"deviceControlChr", "passChallengeChr", "passChr", "screenStateChr"}
+# one, a write is ACKed or a read is served unchecked, so a missing callback
+# fails too. Every characteristic the sketch gives one is listed (grep
+# AuthorizeCallback RailyPinsP1.ino): writes on deviceControl, pass, screenState
+# and voiceControl, reads on passChallenge, buttonEvent, linkSecurity and
+# deviceSecret (the seal only while the bind window serves it).
+REQUIRED = {
+    "deviceControlChr", "passChallengeChr", "passChr", "screenStateChr",
+    "buttonEventChr", "linkSecurityChr", "voiceControlChr", "deviceSecretChr",
+}
 
 
 def main():

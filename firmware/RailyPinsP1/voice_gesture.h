@@ -22,7 +22,10 @@
 //            decides it (V2), this header only reads the flag.
 //   armed hold:   under the talk threshold = scan on release;
 //                 at the threshold = START, talk until release (END 0) or
-//                 the 60 s cap (END 1); both are a normal end (0.4.4).
+//                 the 60 s cap (END 1); both are a normal end (0.4.4);
+//                 a full ring or low battery before the threshold turns
+//                 the mic off with no cue: a tap still scans, the
+//                 threshold says «didn't work» (no START, no END).
 //   unarmed hold: under the talk threshold = scan on release; from the
 //                 threshold to 2 s = scan when connected (voice is just not
 //                 on for this phone) or on a board without a mic; on a voice
@@ -118,6 +121,27 @@ static inline uint8_t voiceStopRoute(uint16_t stopFor, uint8_t liveUtterance, bo
   return replying ? VOICE_STOP_LATE : VOICE_STOP_DROP;
 }
 
+// voice_control's one opcode (voice-from-pin.md §4).
+static const uint8_t VOICE_CONTROL_STOP = 0x01;
+// The longest voice_control write: [STOP, reason, utterance]. setup() gives
+// the characteristic this max length (variable length up to it), so the
+// SoftDevice can store the 3-byte STOP that voiceStopWrite() accepts.
+static const uint16_t VOICE_CONTROL_MAX_LEN = 3;
+
+// A voice_control write, read in the BLE task: [0x01 STOP, reason] from an
+// app before 0.4.5, [0x01 STOP, reason, utterance] from one that names the
+// hold it means. Returns what loop() takes (reason << 16 | utterance + 1),
+// or 0 for a write to reject. Two bytes keep the old rule, stamped with the
+// live utterance, so a late STOP can still land on a hold begun since. Three
+// bytes never read the live id: voiceStopRoute() drops a STOP for another
+// utterance, however late it arrives.
+static inline uint32_t voiceStopWrite(const uint8_t* data, uint16_t len, uint16_t offset,
+                                      uint8_t liveUtterance) {
+  if (offset != 0 || (len != 2 && len != VOICE_CONTROL_MAX_LEN) || data[0] != VOICE_CONTROL_STOP) return 0;
+  const uint8_t utterance = len == VOICE_CONTROL_MAX_LEN ? data[2] : liveUtterance;
+  return ((uint32_t)data[1] << 16) | ((uint32_t)utterance + 1u);
+}
+
 struct VoiceGestureOut {
   uint16_t actions;
   uint8_t endReason;  // with VOICE_ACT_SEND_END: a VoiceEndReason (voice_frame.h)
@@ -132,6 +156,8 @@ enum VoiceGestureState : uint8_t {
   VOICE_GESTURE_PREROLL = 2,   // held, mic on, nothing but PRESS sent yet
   VOICE_GESTURE_TALKING = 3,   // held, mic on, START sent
   VOICE_GESTURE_SPENT = 4,     // held, already ended (cap, stop, link lost): the release does nothing
+  VOICE_GESTURE_MUTED = 5,     // held, the pin stopped the mic in the pre-roll (ring full, low battery):
+                               // a release before the threshold still scans, the threshold fails the talk
 };
 
 struct VoiceGesture {
@@ -166,6 +192,9 @@ struct VoiceGesture {
       case VOICE_GESTURE_PREROLL:  // a tap: the scan, the pre-roll never leaves the pin
         result.actions |= VOICE_ACT_MIC_OFF | VOICE_ACT_DROP_AUDIO | VOICE_ACT_SCAN;
         break;
+      case VOICE_GESTURE_MUTED:  // a tap whose pre-roll the pin already dropped: the scan
+        result.actions |= VOICE_ACT_SCAN;
+        break;
       case VOICE_GESTURE_TALKING:
         result.actions |= VOICE_ACT_MIC_OFF | VOICE_ACT_SEND_END;
         result.endReason = 0;  // VOICE_END_RELEASED
@@ -180,6 +209,7 @@ struct VoiceGesture {
 
   // From loop(), at least by nextDeadlineMs(), and on every link change.
   VoiceGestureOut tick(uint32_t now, const VoiceLink& link) {
+    if (state == VOICE_GESTURE_MUTED) return mutedTick(now, link);
     if (!micOn()) return out(VOICE_ACT_NONE);
     if (!link.canTalk()) {
       // Disconnected or unsubscribed mid-hold: mic off, buffers gone, no END
@@ -209,9 +239,18 @@ struct VoiceGesture {
   // reason byte. Never turns the mic on; before START there is no utterance
   // to end, so the pre-roll is dropped. Spent minutes (STOP 1) tell the
   // person to look at the phone; every other stop is a failed talk.
+  // The pin's own stops (END 2, 3) in the pre-roll only turn the mic off:
+  // the hold may still be a tap, and a tap must scan, above all when the
+  // battery is lowest. Its outcome waits for the release or the threshold
+  // (MUTED). A phone STOP in the pre-roll ends the hold at once (0.4.4).
   VoiceGestureOut stop(uint8_t reason, uint8_t phoneReason = 0) {
-    const uint8_t cue = reason == 4 /* VOICE_END_PHONE_STOP */ ? voiceStopCue(phoneReason) : VOICE_CUE_TALK_FAILED;
+    const uint8_t cue = reason == 4 /* VOICE_END_PHONE_STOP */ ? voiceStopCue(phoneReason) : static_cast<uint8_t>(VOICE_CUE_TALK_FAILED);
     const uint16_t fail = cue == VOICE_CUE_SEE_PHONE ? VOICE_ACT_NONE : VOICE_ACT_FAIL;
+    const bool pinStop = reason == 2 /* VOICE_END_OVERFLOW */ || reason == 3 /* VOICE_END_LOW_BATTERY */;
+    if (state == VOICE_GESTURE_PREROLL && pinStop) {
+      state = VOICE_GESTURE_MUTED;
+      return out(VOICE_ACT_MIC_OFF | VOICE_ACT_DROP_AUDIO);
+    }
     if (state == VOICE_GESTURE_PREROLL) {
       state = VOICE_GESTURE_SPENT;
       return out(VOICE_ACT_MIC_OFF | VOICE_ACT_DROP_AUDIO | fail, cue);
@@ -230,7 +269,7 @@ struct VoiceGesture {
   uint32_t nextDeadlineMs(uint32_t now) const {
     const uint32_t heldMs = now - downAtMs;
     uint32_t at;
-    if (state == VOICE_GESTURE_PREROLL) {
+    if (state == VOICE_GESTURE_PREROLL || state == VOICE_GESTURE_MUTED) {
       at = talkHoldMs;
     } else if (state == VOICE_GESTURE_TALKING) {
       at = VOICE_UTTERANCE_CAP_MS;
@@ -244,6 +283,19 @@ struct VoiceGesture {
   static VoiceGestureOut out(uint16_t actions, uint8_t cue = VOICE_CUE_NONE) {
     VoiceGestureOut result = {actions, 0, cue};
     return result;
+  }
+
+  // MUTED: the mic is off and nothing but PRESS went out, so a fail adds no
+  // frame (as a tap after PRESS: the phone sees no START). The link lost
+  // before the release is «no link», as in the pre-roll.
+  VoiceGestureOut mutedTick(uint32_t now, const VoiceLink& link) {
+    if (!link.canTalk()) {
+      state = VOICE_GESTURE_SPENT;
+      return out(VOICE_ACT_FAIL, VOICE_CUE_NO_LINK);
+    }
+    if (now - downAtMs < talkHoldMs) return out(VOICE_ACT_NONE);
+    state = VOICE_GESTURE_SPENT;  // the talk the person asked for cannot run
+    return out(VOICE_ACT_FAIL, VOICE_CUE_TALK_FAILED);
   }
 
   // VOICE_CUE_NONE = the scan; otherwise why it did not work.
